@@ -57,17 +57,19 @@ class IrcUser(object):
         self.references = {}           # XXX: no validation to prevent timestamp collisions
         self.actions    = {}           # XXX: no validation to prevent timestamp collisions
         self.AKAs       = []
+        self.state      = 'joined'     # joined, parted
 
         self.join_times.append(time)
 
     def join(self, time):
-        """This user has joined the channel"""
         if time not in self.join_times:
            self.join_times.append(time)
+        self.__state = 'joined'
 
     def part(self, time):
         """This user has left the channel"""
         self.part_times.append(time)
+        self.__state = 'parted'
 
     def utterance(self, time, text):
         """This user has said something"""
@@ -141,10 +143,13 @@ def process(file):
             user_object = IrcUser(nick, date)
             IrcUserTable[nick] = user_object
 
+
         if (nick_match.start() > 1):   # Server msg. XXX: relies on client to insert noise like '»'
             action_match = c_join_re.search(line)          # JOIN
             if action_match != None:
                 user_object.join(date)
+            if (user_object.state == 'parted'):            # they didn't join, but have an action; join them at the 
+                user_object.join(first_time)               # start of time
             action_match = c_part_re.search(line)          # PART
             if action_match != None:
                 user_object.part(date)
@@ -154,6 +159,8 @@ def process(file):
                 user_object.nickChange(newnick)
                 IrcUserTable[newnick] = user_object        # FIXME: malicious users can clobber each others' state
         else:                          # Regular utterances and actions
+             if (user_object.state == 'parted'):
+                 user_object.join(first_time)  
              if (text_after_nick[0] == ':'):
                  user_object.utterance(date, text_after_nick[2:])
              else:
