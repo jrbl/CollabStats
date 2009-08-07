@@ -16,184 +16,261 @@
 #You should have received a copy of the GNU General Public License along with 
 #this program.  If not, see <http://www.gnu.org/licenses/>.
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-"""ircstats - a little script to parse irc logs and gather stats from them
+"""ircstats - a little script to parse XML IRC logs and gather stats from them
 
 Cf. http://forge.blueoxen.net/wiki/IRC_Analytics
 Cf. RFC 2812
+Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 """
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 import optparse
-import re
-import datetime
+import xml.dom.minidom as md
+from xml.dom import NotSupportedErr as NotSupportedError
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-DEBUG   = True
-VERSION = "0.01"
-DATE_FORMAT = "[YYYY-MM-DD HH::mm:ss]"
-DATE_LENGTH = len(DATE_FORMAT)
-IrcUserTable = {}
-
-date_chars = '\[(?P<year>[12][09][0-9][0-9])-(?P<month>[01][0-9])-(?P<day>[0-3][0-9]) (?P<hour>[0-2][0-9])::(?P<minute>[0-5][0-9]):(?P<second>[0-5][0-9])]'
-nick_chars = '[a-zA-Z\[\]_\\`^{}|][0-9a-zA-Z\[\]_\\`^{}|\-]*'
-colloquy_part_chars = '» (?P<nick>' + nick_chars + ') left the chat room.'
-colloquy_join_chars = '» (?P<nick>' + nick_chars + ') joined the chat room.'
-colloquy_name_chars = '» (?P<nick1>' + nick_chars + ') is now known as (?P<nick2>' + nick_chars + ').'
-
-date_re = re.compile(date_chars)
-nick_re = re.compile(nick_chars)
-c_part_re = re.compile(colloquy_part_chars)
-c_join_re = re.compile(colloquy_join_chars)
-c_name_re = re.compile(colloquy_name_chars)
+DEBUG     = False
+VERSION   = "0.02x"
+LOG_START = None
+LOG_END   = None
+MSGCOUNT  = 0
+ACTCOUNT  = 0
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-class IrcUser(object):
+class IRCUser(object):
     def __init__(self, nick, time):
         """nick is new to the log stream; create them and then join them."""
         self.nick       = nick
         self.join_times = []
         self.part_times = []
-        self.utterances = {}           # XXX: no validation to prevent timestamp collisions
+        self.messages   = {}           # XXX: no validation to prevent timestamp collisions
         self.references = {}           # XXX: no validation to prevent timestamp collisions
         self.actions    = {}           # XXX: no validation to prevent timestamp collisions
         self.AKAs       = []
-        self.state      = 'joined'     # joined, parted
-
-        self.join_times.append(time)
+        self.state      = 'new'        # new, joined, parted
+        self.join(time)
 
     def join(self, time):
         if time not in self.join_times:
            self.join_times.append(time)
-        self.__state = 'joined'
+        self.state = 'joined'
 
     def part(self, time):
         """This user has left the channel"""
-        self.part_times.append(time)
-        self.__state = 'parted'
+        if time not in self.part_times:
+            self.part_times.append(time)
+        self.state = 'parted'
 
-    def utterance(self, time, text):
-        """This user has said something"""
-        self.utterances[time] = text   
-
-    def referrant(self, time, referrer, text):
-        """Somebody talked about (or to) this user"""
-        self.references[time] = (referrer, text)
+    def message(self, time, text):
+        """This user has said something.
+        FIXME: the XML format tracks who we refer to; we should track that.
+        FIXME: we can also extract who refers to us and track that.
+        """
+        self.messages[time] = text   
 
     def action(self, time, text):
         """User performed an action"""
         self.actions[time] = text
-
-    def nickChange(self, newnick):
-        """User changed nicks
-        
-        FIXME: we can rely on conventions like foo->fooaway or foo->foo|food to strongly imply which nick is 
-               canonical; we should try to do that parsing.
-        """
-        if newnick not in self.AKAs:
-           self.AKAs.append(newnick)
 
     def __str__(self):
         pad = ' ' * len(self.nick)
         s  = self.nick + ": AKA " + str(self.AKAs)  + '\n'
         s += '\t' + 'joins' + ' ' + str([str(t) for t in self.join_times]) + '\n'
         s += '\t' + 'parts' + ' ' + str([str(t) for t in self.part_times]) + '\n'
-        s += '\t' + 'said' + "  " + str(self.utterances) + '\n'
+        s += '\t' + 'said' + "  " + str(self.messages) + '\n'
         s += '\t' + 'refTo' + ' ' + str(self.references) + '\n'
         s += '\t' + 'acts' + "  " + str(self.actions) + '\n'
         return s
 
+ircUserTable = {} 
+
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-def ircLower(s):
-    """Convert the input string to all-lower-case, with attempts to respect RFC 2812 s2.2"""
-    s = s.lower()
-    s.replace('[', '{')
-    s.replace(']', '}')
-    s.replace('\\', '|')
-    s.replace('~', '^')
-    return s
+def handleLogDOM(dom):
+    """Process the elements in a colloquy log DOM"""
+    global LOG_START 
+    LOG_START = dom.getAttribute('began')
+    for child in dom.childNodes:
+        if child.tagName == u"envelope":         # one or more lines from a user
+            handleEnvelope(child)
+        elif child.tagName == u"event":          # IRC server event
+            handleEvent(child)
+        else:                                    # violates log spec
+            raise NotSupportedError, "Unknown child node " + child.tagName
 
-def process(file):
-    """Process an IRC log file, line by line.  Assumes DATE_FORMAT timestamps and » on server actions."""
+    for user in ircUserTable.keys():
+        ircUserTable[user].part(LOG_END)
 
-    startoff   = DATE_LENGTH
-    first_time = None                                 # used to seed join times before start of logging
-    last_time  = datetime.datetime(1900, 1, 1)        # used to seed part times after end of logging
+def handleEnvelope(child):
+    """Pick the relevant data off of a blob of messages from a single user."""
 
-    for line in file:
-        line = line.strip()
-        date_match = date_re.match(line)
-        if date_match == None: continue
-        text_part = line[startoff:]
-        nick_match = nick_re.search(text_part)
-        text_after_nick = text_part[nick_match.end():]
+    global LOG_END
+    global MSGCOUNT
+    global ACTCOUNT
 
-        date = apply(datetime.datetime, [int(x) for x in date_match.groups()])
-        if not first_time:
-            first_time = date
-        if date > last_time:
-            last_time = date
+    irc_nick = getIrcNickAndValidate(child.getElementsByTagName('sender'))
+    if irc_nick not in ircUserTable:
+        ircUserTable[irc_nick] = IRCUser(irc_nick, LOG_START)
+        if DEBUG: print irc_nick
 
-        nick_raw = nick_match.group()
-        nick = ircLower(nick_raw)
+    user_object = ircUserTable[irc_nick]
 
-        user_object = None
-        try:
-            user_object = IrcUserTable[nick]
-        except KeyError:
-            user_object = IrcUser(nick, date)
-            IrcUserTable[nick] = user_object
+    for message in child.getElementsByTagName('message'):
 
+        timestamp = message.getAttribute('received')
+        pretty    = message.toprettyxml(encoding="utf-8")
 
-        if (nick_match.start() > 1):   # Server msg. XXX: relies on client to insert noise like '»'
-            action_match = c_join_re.search(line)          # JOIN
-            if action_match != None:
-                user_object.join(date)
-            if (user_object.state == 'parted'):            # they didn't join, but have an action; join them at the 
-                user_object.join(first_time)               # start of time
-            action_match = c_part_re.search(line)          # PART
-            if action_match != None:
-                user_object.part(date)
-            action_match = c_name_re.search(line)          # NAME CHANGE
-            if action_match != None:
-                newnick = ircLower(action_match.groupdict()['nick2'])
-                user_object.nickChange(newnick)
-                IrcUserTable[newnick] = user_object        # FIXME: malicious users can clobber each others' state
-        else:                          # Regular utterances and actions
-             if (user_object.state == 'parted'):
-                 user_object.join(first_time)  
-             if (text_after_nick[0] == ':'):
-                 user_object.utterance(date, text_after_nick[2:])
-             else:
-                 user_object.action(date, text_part)
-    
-    for user in IrcUserTable.values():
-        if len(user.join_times) - len(user.part_times) == 1:
-            user.part_times.append(last_time)
+        if message.getAttribute('type') == u"notice":
+            handleMessageNotice(user_object, timestamp, pretty)
+        elif message.getAttribute('action'):
+            user_object.action(timestamp, pretty)
+            ACTCOUNT += 1
+        else:
+            user_object.message(timestamp, pretty)
+            MSGCOUNT += 1
 
-def count_utterances(user = None):
+        LOG_END = timestamp
+
+def handleMessageNotice(user_object, timestamp, message):
+    print "------------------------------------------------------------------------------"
+    print "System notice detected, but currently unsupported by the parser."
+    print "Now that there's some sample input for what notices look like,"
+    print "this can be fixed."
+    print
+    print message
+    print "------------------------------------------------------------------------------"
+
+def handleEvent(child):
+    print "------------------------------------------------------------------------------"
+    print "Event detected, but currently unsupported by the parser."
+    print "Now that there's some sample input for what events look like,"
+    print "this can be fixed."
+    print
+    print "After event handling is implemented, re-run this script for more"
+    print "accurate stats."
+    print 
+    print child
+    print "------------------------------------------------------------------------------"
+
+def getIrcNickAndValidate(element_list):
+    first = element_list[0]
+    if len(element_list) > 1:
+        parent = first.parentNode
+        raise NotSupportedError, "Multiple senders on node: " + parent.toprettyxml()
+    id = first.getAttribute('identifier')
+    if id == '':
+        return first.firstChild.nodeValue
+    else: 
+        return id
+
+def count_messages(user):
     tally = 0
     if user == None:
-        for user in IrcUserTable.values():
-            tally += count_utterances(user)
+        for user in ircUserTable.values():
+            tally += count_messages(user)
     else: 
-        return len(user.utterances.keys())
+        return len(user.messages.keys())
     return tally
 
+def count_actions(user):
+    tally = 0
+    if user == None:
+        for user in ircUserTable.values():
+            tally += count_actions(user)
+    else: 
+        return len(user.actions.keys())
+    return tally
+        
+def usersByName():
+    for name in sorted(ircUserTable.keys()):
+        yield ircUserTable[name]
+
+def statsForUser(user):
+    """Returns (nick, message_count, act_count, message_ratio, act_ratio)"""
+
+    nick = user.nick
+    msgs = count_messages(user)
+    acts = count_actions(user)
+    msgrat = float(msgs)/MSGCOUNT
+    actrat = float(acts)/ACTCOUNT
+
+    return (nick, msgs, acts, msgrat, actrat)
         
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 if __name__ == "__main__":
 
-    parser = optparse.OptionParser(version=VERSION)
-    #parser.add_option('-r', "--trim-row", action="store", type="int", dest="r", metavar="ROW", help="trims row number ROW")
-    #parser.add_option('-c', "--trim-col", action="store", type="int", dest="c", metavar="COL", help="trims column number COL")
-    #parser.add_option('', "--ceq", action="store", nargs=2, dest="ceq_tup", metavar="COL VAL", help="trims column COL if its value is VAL")
-    #parser.add_option('', "--clt", action="store", nargs=2, dest="clt_tup", metavar="COL VAL", help="trims row if column COL has value less than VAL.  ORs with --ceq.")
-    #parser.add_option('', "--cgt", action="store", nargs=2, dest="cgt_tup", metavar="COL VAL", help="trims row if column COL has value greater than VAL.  ORs with --ceq.")
+    usage = "usage: %prog [options] file1.xml [file2.xml] [...]"
+    parser = optparse.OptionParser(usage=usage, version=VERSION)
+    parser.add_option('-c', "--csv",      dest="csv",      action="store_true", default=False, 
+                      help="Write a CSV-formatted file of all statistics to stdout")
+    parser.add_option('-t', "--totals",   dest="totals",   action="store_true", default=False, 
+                      help="Output summary totals of messages and actions")
+    parser.add_option('-m', "--messages", dest="messages", action="store_true", default=False, 
+                      help="Output message counts per username")
+    parser.add_option('-a', "--actions",  dest="actions",  action="store_true", default=False, 
+                      help="Output action counts per username")
+    parser.add_option('-l', "--lurkers",  dest="lurkers",  action="store_true", default=False, 
+                      help="Output list of lurkers - users who don't say anything")
+    parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
+                      help="Enable debug mode.  Really, it's not that great.")
     options, args = parser.parse_args()
 
-    for filename in args:
-        f = open(filename)
-        process(f)
+    if (len(args) == 0): parser.error("At least one Colloquy XML-formatted IRC log file must be specified.")
+    if options.debug: DEBUG = True
 
-    for name in sorted(IrcUserTable.keys()):
-        print IrcUserTable[name]
+    for filename in args:
+        dom = md.parse(filename)
+        assert dom.documentElement.tagName == u"log"
+        handleLogDOM(dom.documentElement)
+        dom.unlink()
+
+    if options.totals:
+        print "Total messages:", MSGCOUNT + ACTCOUNT
+        print "Messages:", MSGCOUNT
+        print "Actions:", ACTCOUNT
+
+    if options.messages:
+        print "Messages by user:"
+        print '\t%s  %s  %15s' % ("Msgs", "%Tot", "IRC Nick")
+        for user in usersByName():
+            msgs = count_messages(user)
+            if msgs > 0:
+                print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/MSGCOUNT, user.nick)
+
+    if options.actions:
+        print "Actions by user:"
+        print '\t%s  %s  %15s' % ("Acts", "%Tot", "IRC Nick")
+        for user in usersByName():
+            acts = count_actions(user)
+            if acts > 0:
+                print '\t %3d  %.2f  %20s' % (acts, float(acts)/ACTCOUNT, user.nick)
+
+    if options.lurkers: 
+        lurkers = []
+        semilurk = []
+        for user in usersByName():
+            stats = statsForUser(user)
+            if stats[1] == 0 and stats[2] == 0:
+                lurkers.append(user.nick)
+            elif stats[2] == 0:
+                semilurk.append(user.nick)
+        if len(lurkers) == 0:
+            print "No Lurkers"
+        else:
+            print "Lurkers:"
+            for name in lurkers:
+                print '\t %s' % name
+        if len(semilurk) == 0:
+            print "No action-only users"
+        else:
+            print "Action-only users:"
+            for name in semilurk:
+                print '\t %s' % name
+
+    if options.csv:
+        import csv, sys
+        csv.register_dialect("ooffice_like", delimiter=',', skipinitialspace=True, lineterminator="\n", quoting=csv.QUOTE_NONNUMERIC)
+        def statsTuples():
+            yield ("IRC Nick", "Message Count", "Action Count", "Messages/Total Messages", "Actions/Total Actions")
+            for user in usersByName():
+                yield statsForUser(user)
+        csv.writer(sys.stdout, dialect="ooffice_like").writerows(statsTuples())
