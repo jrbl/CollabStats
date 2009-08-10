@@ -24,9 +24,12 @@ Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 """
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-import optparse
 import xml.dom.minidom as md
 from xml.dom import NotSupportedErr as NotSupportedError
+import uuid
+import os
+
+import yaml
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 DEBUG     = False
@@ -40,13 +43,14 @@ ACTCOUNT  = 0
 class IRCUser(object):
     def __init__(self, nick, time):
         """nick is new to the log stream; create them and then join them."""
+        self.id         = str(uuid.uuid4())
         self.nick       = nick
+        self.nicks      = []
         self.join_times = []
         self.part_times = []
         self.messages   = {}           # XXX: no validation to prevent timestamp collisions
         self.references = {}           # XXX: no validation to prevent timestamp collisions
         self.actions    = {}           # XXX: no validation to prevent timestamp collisions
-        self.AKAs       = []
         self.state      = 'new'        # new, joined, parted
         self.join(time)
 
@@ -82,9 +86,92 @@ class IRCUser(object):
         s += '\t' + 'acts' + "  " + str(self.actions) + '\n'
         return s
 
+    def addNick(self, nickname):
+        """Adds a nickname to the list for this user."""
+        if nickname not in self.nicks:
+           self.nicks.append(nickname)
+
+class IRCNameMapper(object):
+    """Maps IRC user names to UUIDs, Real names to UUIDs, and UUIDs to IRCUsers"""
+
+    def __init__(self, mapping_yaml = 'usernames.yaml'):
+        """Builds up the initial name mapping tables from YAML data on disk."""
+        self.__yaml_data = {}
+        self.__ircUserTable = {} # FIXME: in this vision, maps uuids -> user objects # should be a shelf # that may require copy, write, copy, write semantic
+        self.__commonNames = {}  # FIXME: in this vision, maps names, nicks -> uuids
+
+        self.__yaml_data = yaml.safe_load(open(f, 'r'))
+        # FIXME: we should have IRC user dict loaded someplace, and it should 
+        #        be our ircUserTable
+        #
+        #        For the case where we're *not* storing it, we should build it here.
+
+        raise Exception, "Not Implemented"
+
+    def __len__(self):
+        """Return the number of unique user objects being tracked."""
+        return len(self.__ircUserTable.keys())
+
+    def __getitem__(self, key):
+        if key in self.__ircUserTable
+            return self__ircUserTable[key]
+        elif key in self.__commonNames
+            return self.__ircUserTable[ self.__commonNames[ key ] ]
+        else:
+            raise KeyError, "No such UUID or nick:" + str(key)
+
+    def __setitem__(self, nick, user_object):
+        """Maps a nickname to a particular user object"""
+        id = user_object.id
+        if id in self.__ircUserTable:
+           self.__commonNames[nick] = user_object
+           user_object.addNick(nick)
+
+    def __iter__(self):
+        for uuid in self.__ircUserTable.keys():
+            yield uuid
+
+    def __contains__(self, item):
+        return (item in self.__ircUserTable) or (item in self.__commonNames)
+
+    def merge(self, uuid1, uuid2):
+        """Makes UUID1 and UUID2 refer to the same user object; returns new UUID"""
+        raise Exception, "Not Implemented"
+
+    def write_yaml(self, yaml = 'usernames.yaml'):
+        """Write out a yaml file reflecting the current state of the user tables."""
+        new_yaml_data = {}
+        for key in self.__ircUserTable.keys():
+            if key in self.__yaml_data:
+                new_yaml_data[key] = self.__yaml_data[key]
+            else:
+                new_yaml_data[key] = self.yamlifyIRCUser(self.__ircUserTable[key])
+        
+        if os.access(yaml, os.F_OK) and os.access(yaml, os.W_OK):
+            os.rename(yaml, yaml+'.bak')
+        f = open(yaml, 'wb')
+        yaml.dump(new_yaml_data, f, indent=4)
+
 ircUserTable = {} 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
+def getIRCUserForNick(irc_nick):
+    """Checks whether we've ever seen this nick and returns the corresponding user"""
+
+    # FIXME:
+    # Here we should EXPECT:
+       # The yaml data has been read in, and processed into uuid->name,nick and nick->uuid,name mappings
+    # Here we should DO:
+       # look up irc_nick in that table to get a UUID.  If there is not one, generate one
+       # stick it back into the YAML dictionary of mappings
+       # use a separate UUID->UserObject mapping to get the user object
+
+    if irc_nick not in ircUserTable:
+        ircUserTable[irc_nick] = IRCUser(irc_nick, LOG_START)
+        if DEBUG: print irc_nick
+
+    user_object = ircUserTable[irc_nick]
+
 def handleLogDOM(dom):
     """Process the elements in a colloquy log DOM"""
     global LOG_START 
@@ -108,11 +195,7 @@ def handleEnvelope(child):
     global ACTCOUNT
 
     irc_nick = getIrcNickAndValidate(child.getElementsByTagName('sender'))
-    if irc_nick not in ircUserTable:
-        ircUserTable[irc_nick] = IRCUser(irc_nick, LOG_START)
-        if DEBUG: print irc_nick
-
-    user_object = ircUserTable[irc_nick]
+    user_object = getIRCUserForNick(irc_nick) # FIXME: implement this
 
     for message in child.getElementsByTagName('message'):
 
@@ -194,10 +277,9 @@ def statsForUser(user):
     actrat = float(acts)/ACTCOUNT
 
     return (nick, msgs, acts, msgrat, actrat)
-        
-#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-if __name__ == "__main__":
 
+def setup_optparse():
+    import optparse
     usage = "usage: %prog [options] file1.xml [file2.xml] [...]"
     parser = optparse.OptionParser(usage=usage, version=VERSION)
     parser.add_option('-c', "--csv",      dest="csv",      action="store_true", default=False, 
@@ -213,10 +295,22 @@ if __name__ == "__main__":
     parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
                       help="Enable debug mode.  Really, it's not that great.")
     options, args = parser.parse_args()
+    return parser
 
-    if (len(args) == 0): parser.error("At least one Colloquy XML-formatted IRC log file must be specified.")
+
+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
+if __name__ == "__main__":
+
+    option_parser = setup_optparse()
+    options, args = option_parser.parse_args()
+
+    if (len(args) == 0): option_parser.error("At least one Colloquy XML-formatted IRC log file must be specified.")
     if options.debug: DEBUG = True
 
+    # Read in user mapping file
+    uuidToNames = setup_yaml('usernames.yaml')
+    
+    # Read in and process user log file
     for filename in args:
         dom = md.parse(filename)
         assert dom.documentElement.tagName == u"log"
