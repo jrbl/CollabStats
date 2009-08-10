@@ -29,6 +29,8 @@ from xml.dom import NotSupportedErr as NotSupportedError
 import uuid
 import os
 
+import DictDB
+
 import yaml
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
@@ -41,11 +43,13 @@ ACTCOUNT  = 0
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 class IRCUser(object):
+    """Models all the interesting stats pertaining to a particular entity on IRC"""
+
     def __init__(self, nick, time):
         """nick is new to the log stream; create them and then join them."""
         self.id         = str(uuid.uuid4())
         self.nick       = nick
-        self.nicks      = []
+        self.nicks      = [nick]
         self.join_times = []
         self.part_times = []
         self.messages   = {}           # XXX: no validation to prevent timestamp collisions
@@ -56,7 +60,7 @@ class IRCUser(object):
 
     def join(self, time):
         if time not in self.join_times:
-           self.join_times.append(time)
+            self.join_times.append(time)
         self.state = 'joined'
 
     def part(self, time):
@@ -77,8 +81,7 @@ class IRCUser(object):
         self.actions[time] = text
 
     def __str__(self):
-        pad = ' ' * len(self.nick)
-        s  = self.nick + ": AKA " + str(self.AKAs)  + '\n'
+        s  = self.nick + ": AKA " + str(self.nicks)  + '\n'
         s += '\t' + 'joins' + ' ' + str([str(t) for t in self.join_times]) + '\n'
         s += '\t' + 'parts' + ' ' + str([str(t) for t in self.part_times]) + '\n'
         s += '\t' + 'said' + "  " + str(self.messages) + '\n'
@@ -89,43 +92,41 @@ class IRCUser(object):
     def addNick(self, nickname):
         """Adds a nickname to the list for this user."""
         if nickname not in self.nicks:
-           self.nicks.append(nickname)
+            self.nicks.append(nickname)
 
 class IRCNameMapper(object):
     """Maps IRC user names to UUIDs, Real names to UUIDs, and UUIDs to IRCUsers"""
 
-    def __init__(self, mapping_yaml = 'usernames.yaml'):
+    def __init__(self, mapping_yaml = 'usernames.yaml', ircUsersDB = 'contact_stats.pickle'):
         """Builds up the initial name mapping tables from YAML data on disk."""
         self.__yaml_data = {}
-        self.__ircUserTable = {} # FIXME: in this vision, maps uuids -> user objects # should be a shelf # that may require copy, write, copy, write semantic
-        self.__commonNames = {}  # FIXME: in this vision, maps names, nicks -> uuids
+        self.__ircUserTable = {}                 # maps uuids -> user objects 
+        self.__commonNames = {}                  # maps nicks -> uuids
 
-        self.__yaml_data = yaml.safe_load(open(f, 'r'))
-        # FIXME: we should have IRC user dict loaded someplace, and it should 
-        #        be our ircUserTable
-        #
-        #        For the case where we're *not* storing it, we should build it here.
-
-        raise Exception, "Not Implemented"
+        self.__yaml_data = yaml.safe_load( open( mapping_yaml, 'r' ))
+        self.__ircUserTable = DictDB.dbopen(ircUsersDB, flag='c', format='pickle')
 
     def __len__(self):
         """Return the number of unique user objects being tracked."""
         return len(self.__ircUserTable.keys())
 
     def __getitem__(self, key):
-        if key in self.__ircUserTable
-            return self__ircUserTable[key]
-        elif key in self.__commonNames
+        if key in self.__ircUserTable:
+            return self.__ircUserTable[key]
+        elif key in self.__commonNames:
             return self.__ircUserTable[ self.__commonNames[ key ] ]
         else:
-            raise KeyError, "No such UUID or nick:" + str(key)
+            raise KeyError, "No such UUID or nick: '" + str(key) + "'"
 
     def __setitem__(self, nick, user_object):
         """Maps a nickname to a particular user object"""
         id = user_object.id
         if id in self.__ircUserTable:
-           self.__commonNames[nick] = user_object
-           user_object.addNick(nick)
+            self.__commonNames[nick] = id
+            user_object.addNick(nick)
+        else:
+            self.__ircUserTable[id] = user_object
+            self.__commonNames[nick] = id
 
     def __iter__(self):
         for uuid in self.__ircUserTable.keys():
@@ -136,9 +137,10 @@ class IRCNameMapper(object):
 
     def merge(self, uuid1, uuid2):
         """Makes UUID1 and UUID2 refer to the same user object; returns new UUID"""
+        # FIXME: Not implemented.  Important.
         raise Exception, "Not Implemented"
 
-    def write_yaml(self, yaml = 'usernames.yaml'):
+    def write_yaml(self, yaml_file = 'usernames.yaml'):
         """Write out a yaml file reflecting the current state of the user tables."""
         new_yaml_data = {}
         for key in self.__ircUserTable.keys():
@@ -147,47 +149,51 @@ class IRCNameMapper(object):
             else:
                 new_yaml_data[key] = self.yamlifyIRCUser(self.__ircUserTable[key])
         
-        if os.access(yaml, os.F_OK) and os.access(yaml, os.W_OK):
-            os.rename(yaml, yaml+'.bak')
-        f = open(yaml, 'wb')
+        if os.access(yaml_file, os.F_OK) and os.access(yaml_file, os.W_OK):
+            os.rename(yaml_file, yaml_file+'.bak')
+        f = open(yaml_file, 'wb')
         yaml.dump(new_yaml_data, f, indent=4)
 
-ircUserTable = {} 
+    def close(self):
+        """Write out our data files"""
+        self.write_yaml()
+        self.__ircUserTable.sync()
+
+    def yamlifyIRCUser(self, user_object):
+        """Return a data structure conforming to our YAML format for user_object"""
+        return [ '', '', { 'email:': [ '' ], 'irc:': [str(nick) for nick in user_object.nicks], 'wiki:': [ '' ] } ]
+
+    def keys(self):
+        """Return a list of every UUID we're tracking - lazily"""
+        for key in self.__ircUserTable.keys():
+            yield key
+
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-def getIRCUserForNick(irc_nick):
+def getIRCUserForNick(irc_nick, ircUserTable):
     """Checks whether we've ever seen this nick and returns the corresponding user"""
-
-    # FIXME:
-    # Here we should EXPECT:
-       # The yaml data has been read in, and processed into uuid->name,nick and nick->uuid,name mappings
-    # Here we should DO:
-       # look up irc_nick in that table to get a UUID.  If there is not one, generate one
-       # stick it back into the YAML dictionary of mappings
-       # use a separate UUID->UserObject mapping to get the user object
 
     if irc_nick not in ircUserTable:
         ircUserTable[irc_nick] = IRCUser(irc_nick, LOG_START)
-        if DEBUG: print irc_nick
 
-    user_object = ircUserTable[irc_nick]
+    return ircUserTable[irc_nick]
 
-def handleLogDOM(dom):
+def handleLogDOM(dom, userTable):
     """Process the elements in a colloquy log DOM"""
     global LOG_START 
     LOG_START = dom.getAttribute('began')
     for child in dom.childNodes:
         if child.tagName == u"envelope":         # one or more lines from a user
-            handleEnvelope(child)
+            handleEnvelope(child, userTable)
         elif child.tagName == u"event":          # IRC server event
-            handleEvent(child)
+            handleEvent(child, userTable)
         else:                                    # violates log spec
             raise NotSupportedError, "Unknown child node " + child.tagName
 
-    for user in ircUserTable.keys():
-        ircUserTable[user].part(LOG_END)
+    for user in userTable.keys():
+        userTable[user].part(LOG_END)
 
-def handleEnvelope(child):
+def handleEnvelope(child, userTable):
     """Pick the relevant data off of a blob of messages from a single user."""
 
     global LOG_END
@@ -195,7 +201,7 @@ def handleEnvelope(child):
     global ACTCOUNT
 
     irc_nick = getIrcNickAndValidate(child.getElementsByTagName('sender'))
-    user_object = getIRCUserForNick(irc_nick) # FIXME: implement this
+    user_object = getIRCUserForNick(irc_nick, userTable) 
 
     for message in child.getElementsByTagName('message'):
 
@@ -212,6 +218,7 @@ def handleEnvelope(child):
             MSGCOUNT += 1
 
         LOG_END = timestamp
+    if DEBUG: print irc_nick
 
 def handleMessageNotice(user_object, timestamp, message):
     print "------------------------------------------------------------------------------"
@@ -222,7 +229,7 @@ def handleMessageNotice(user_object, timestamp, message):
     print message
     print "------------------------------------------------------------------------------"
 
-def handleEvent(child):
+def handleEvent(child, userTable):
     print "------------------------------------------------------------------------------"
     print "Event detected, but currently unsupported by the parser."
     print "Now that there's some sample input for what events look like,"
@@ -245,7 +252,7 @@ def getIrcNickAndValidate(element_list):
     else: 
         return id
 
-def count_messages(user):
+def count_messages(user, ircUserTable):
     tally = 0
     if user == None:
         for user in ircUserTable.values():
@@ -254,7 +261,7 @@ def count_messages(user):
         return len(user.messages.keys())
     return tally
 
-def count_actions(user):
+def count_actions(user, ircUserTable):
     tally = 0
     if user == None:
         for user in ircUserTable.values():
@@ -263,7 +270,7 @@ def count_actions(user):
         return len(user.actions.keys())
     return tally
         
-def usersByName():
+def usersByName(ircUserTable):
     for name in sorted(ircUserTable.keys()):
         yield ircUserTable[name]
 
@@ -307,14 +314,14 @@ if __name__ == "__main__":
     if (len(args) == 0): option_parser.error("At least one Colloquy XML-formatted IRC log file must be specified.")
     if options.debug: DEBUG = True
 
-    # Read in user mapping file
-    uuidToNames = setup_yaml('usernames.yaml')
+    # Read in on-disk data stores; set up mapping dictionaries
+    userTable = IRCNameMapper(mapping_yaml = 'usernames.yaml', ircUsersDB = 'irc_users.pickle')
     
     # Read in and process user log file
     for filename in args:
         dom = md.parse(filename)
         assert dom.documentElement.tagName == u"log"
-        handleLogDOM(dom.documentElement)
+        handleLogDOM(dom.documentElement, userTable)
         dom.unlink()
 
     if options.totals:
@@ -325,24 +332,24 @@ if __name__ == "__main__":
     if options.messages:
         print "Messages by user:"
         print '\t%s  %s  %15s' % ("Msgs", "%Tot", "IRC Nick")
-        for user in usersByName():
-            msgs = count_messages(user)
+        for user in usersByName(userTable):
+            msgs = count_messages(user, userTable)
             if msgs > 0:
                 print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/MSGCOUNT, user.nick)
 
     if options.actions:
         print "Actions by user:"
         print '\t%s  %s  %15s' % ("Acts", "%Tot", "IRC Nick")
-        for user in usersByName():
-            acts = count_actions(user)
+        for user in usersByName(userTable):
+            acts = count_actions(user, userTable)
             if acts > 0:
                 print '\t %3d  %.2f  %20s' % (acts, float(acts)/ACTCOUNT, user.nick)
 
     if options.lurkers: 
         lurkers = []
         semilurk = []
-        for user in usersByName():
-            stats = statsForUser(user)
+        for user in usersByName(userTable):
+            stats = statsForUser(user, userTable)
             if stats[1] == 0 and stats[2] == 0:
                 lurkers.append(user.nick)
             elif stats[2] == 0:
@@ -362,9 +369,12 @@ if __name__ == "__main__":
 
     if options.csv:
         import csv, sys
-        csv.register_dialect("ooffice_like", delimiter=',', skipinitialspace=True, lineterminator="\n", quoting=csv.QUOTE_NONNUMERIC)
+        csv.register_dialect("ooffice_like", delimiter=',', skipinitialspace=True, 
+                                                            lineterminator="\n", quoting=csv.QUOTE_NONNUMERIC)
         def statsTuples():
             yield ("IRC Nick", "Message Count", "Action Count", "Messages/Total Messages", "Actions/Total Actions")
-            for user in usersByName():
-                yield statsForUser(user)
+            for user in usersByName(userTable):
+                yield statsForUser(user, userTable)
         csv.writer(sys.stdout, dialect="ooffice_like").writerows(statsTuples())
+
+    userTable.close()
