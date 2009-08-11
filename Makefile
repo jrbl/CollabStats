@@ -1,12 +1,10 @@
-CODE_BITS=ircstats.py DictDB.py
-DIST_BITS=ircstats.py DictDB.py CREDITS COPYING README Makefile
-DIST_TARGET='ircstats'
-LINT_OPTS='--max-line-length=120'
+# GNU Makefile
 
-test:
-	@for bit in $(USEFUL_BITS); do \
-		echo $$bit; \
-	done
+CODE_BITS=ircstats.py DictDB.py IRCUser.py UserTable.py validate_yaml
+DIST_BITS=$(CODE_BITS) CREDITS COPYING README Makefile 
+DIST_TARGET=dist_dir
+LINT_OPTS=--max-line-length=120
+
 
 help:
 	@echo "check: check python files for errors"

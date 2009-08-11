@@ -23,150 +23,18 @@ Cf. RFC 2812
 Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 """
 
-#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 import xml.dom.minidom as md
 from xml.dom import NotSupportedErr as NotSupportedError
-import uuid
-import os
 
-import DictDB
+from IRCUser import IRCUser
+import UserTable
 
-import yaml
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 DEBUG     = False
-VERSION   = "0.02x"
+VERSION   = "0.05x"
 LOG_START = None
 LOG_END   = None
-MSGCOUNT  = 0
-ACTCOUNT  = 0
-
-#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-class IRCUser(object):
-    """Models all the interesting stats pertaining to a particular entity on IRC"""
-
-    def __init__(self, nick, time):
-        """nick is new to the log stream; create them and then join them."""
-        self.id         = str(uuid.uuid4())
-        self.nick       = nick
-        self.nicks      = [nick]
-        self.join_times = []
-        self.part_times = []
-        self.messages   = {}           # XXX: no validation to prevent timestamp collisions
-        self.references = {}           # XXX: no validation to prevent timestamp collisions
-        self.actions    = {}           # XXX: no validation to prevent timestamp collisions
-        self.state      = 'new'        # new, joined, parted
-        self.join(time)
-
-    def join(self, time):
-        if time not in self.join_times:
-            self.join_times.append(time)
-        self.state = 'joined'
-
-    def part(self, time):
-        """This user has left the channel"""
-        if time not in self.part_times:
-            self.part_times.append(time)
-        self.state = 'parted'
-
-    def message(self, time, text):
-        """This user has said something.
-        FIXME: the XML format tracks who we refer to; we should track that.
-        FIXME: we can also extract who refers to us and track that.
-        """
-        self.messages[time] = text   
-
-    def action(self, time, text):
-        """User performed an action"""
-        self.actions[time] = text
-
-    def __str__(self):
-        s  = self.nick + ": AKA " + str(self.nicks)  + '\n'
-        s += '\t' + 'joins' + ' ' + str([str(t) for t in self.join_times]) + '\n'
-        s += '\t' + 'parts' + ' ' + str([str(t) for t in self.part_times]) + '\n'
-        s += '\t' + 'said' + "  " + str(self.messages) + '\n'
-        s += '\t' + 'refTo' + ' ' + str(self.references) + '\n'
-        s += '\t' + 'acts' + "  " + str(self.actions) + '\n'
-        return s
-
-    def addNick(self, nickname):
-        """Adds a nickname to the list for this user."""
-        if nickname not in self.nicks:
-            self.nicks.append(nickname)
-
-class IRCNameMapper(object):
-    """Maps IRC user names to UUIDs, Real names to UUIDs, and UUIDs to IRCUsers"""
-
-    def __init__(self, mapping_yaml = 'usernames.yaml', ircUsersDB = 'contact_stats.pickle'):
-        """Builds up the initial name mapping tables from YAML data on disk."""
-        self.__yaml_data = {}
-        self.__ircUserTable = {}                 # maps uuids -> user objects 
-        self.__commonNames = {}                  # maps nicks -> uuids
-
-        self.__yaml_data = yaml.safe_load( open( mapping_yaml, 'r' ))
-        self.__ircUserTable = DictDB.dbopen(ircUsersDB, flag='c', format='pickle')
-
-    def __len__(self):
-        """Return the number of unique user objects being tracked."""
-        return len(self.__ircUserTable.keys())
-
-    def __getitem__(self, key):
-        if key in self.__ircUserTable:
-            return self.__ircUserTable[key]
-        elif key in self.__commonNames:
-            return self.__ircUserTable[ self.__commonNames[ key ] ]
-        else:
-            raise KeyError, "No such UUID or nick: '" + str(key) + "'"
-
-    def __setitem__(self, nick, user_object):
-        """Maps a nickname to a particular user object"""
-        id = user_object.id
-        if id in self.__ircUserTable:
-            self.__commonNames[nick] = id
-            user_object.addNick(nick)
-        else:
-            self.__ircUserTable[id] = user_object
-            self.__commonNames[nick] = id
-
-    def __iter__(self):
-        for uuid in self.__ircUserTable.keys():
-            yield uuid
-
-    def __contains__(self, item):
-        return (item in self.__ircUserTable) or (item in self.__commonNames)
-
-    def merge(self, uuid1, uuid2):
-        """Makes UUID1 and UUID2 refer to the same user object; returns new UUID"""
-        # FIXME: Not implemented.  Important.
-        raise Exception, "Not Implemented"
-
-    def write_yaml(self, yaml_file = 'usernames.yaml'):
-        """Write out a yaml file reflecting the current state of the user tables."""
-        new_yaml_data = {}
-        for key in self.__ircUserTable.keys():
-            if key in self.__yaml_data:
-                new_yaml_data[key] = self.__yaml_data[key]
-            else:
-                new_yaml_data[key] = self.yamlifyIRCUser(self.__ircUserTable[key])
-        
-        if os.access(yaml_file, os.F_OK) and os.access(yaml_file, os.W_OK):
-            os.rename(yaml_file, yaml_file+'.bak')
-        f = open(yaml_file, 'wb')
-        yaml.dump(new_yaml_data, f, indent=4)
-
-    def close(self):
-        """Write out our data files"""
-        self.write_yaml()
-        self.__ircUserTable.sync()
-
-    def yamlifyIRCUser(self, user_object):
-        """Return a data structure conforming to our YAML format for user_object"""
-        return [ '', '', { 'email:': [ '' ], 'irc:': [str(nick) for nick in user_object.nicks], 'wiki:': [ '' ] } ]
-
-    def keys(self):
-        """Return a list of every UUID we're tracking - lazily"""
-        for key in self.__ircUserTable.keys():
-            yield key
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
@@ -252,27 +120,15 @@ def getIrcNickAndValidate(element_list):
     else: 
         return id
 
-def count_messages(user, ircUserTable):
-    tally = 0
-    if user == None:
-        for user in ircUserTable.values():
-            tally += count_messages(user)
-    else: 
-        return len(user.messages.keys())
-    return tally
+def count_messages(user):
+    return len(user.messages.keys())
 
-def count_actions(user, ircUserTable):
-    tally = 0
-    if user == None:
-        for user in ircUserTable.values():
-            tally += count_actions(user)
-    else: 
-        return len(user.actions.keys())
-    return tally
+def count_actions(user):
+    return len(user.actions.keys())
         
-def usersByName(ircUserTable):
-    for name in sorted(ircUserTable.keys()):
-        yield ircUserTable[name]
+def usersByName(userTable):
+    for name in sorted(userTable.keys()):
+        yield userTable[name]
 
 def statsForUser(user):
     """Returns (nick, message_count, act_count, message_ratio, act_ratio)"""
@@ -284,6 +140,15 @@ def statsForUser(user):
     actrat = float(acts)/ACTCOUNT
 
     return (nick, msgs, acts, msgrat, actrat)
+
+def count_everything(userTable):
+    """Make a complete pass through the user database, gathering the total count of messages and acts."""
+    msgcount = 0
+    actcount = 0
+    for id in userTable.keys():
+        msgcount += count_messages(userTable[id])
+        actcount += count_actions(userTable[id])
+    return (msgcount, actcount)
 
 def setup_optparse():
     import optparse
@@ -311,11 +176,10 @@ if __name__ == "__main__":
     option_parser = setup_optparse()
     options, args = option_parser.parse_args()
 
-    if (len(args) == 0): option_parser.error("At least one Colloquy XML-formatted IRC log file must be specified.")
     if options.debug: DEBUG = True
 
     # Read in on-disk data stores; set up mapping dictionaries
-    userTable = IRCNameMapper(mapping_yaml = 'usernames.yaml', ircUsersDB = 'irc_users.pickle')
+    userTable = UserTable.UserTable(mapping_yaml = 'usernames.yaml', ircUsersDB = 'irc_users.pickle')
     
     # Read in and process user log file
     for filename in args:
@@ -323,6 +187,8 @@ if __name__ == "__main__":
         assert dom.documentElement.tagName == u"log"
         handleLogDOM(dom.documentElement, userTable)
         dom.unlink()
+
+    MSGCOUNT, ACTCOUNT = count_everything(userTable)
 
     if options.totals:
         print "Total messages:", MSGCOUNT + ACTCOUNT
@@ -332,28 +198,29 @@ if __name__ == "__main__":
     if options.messages:
         print "Messages by user:"
         print '\t%s  %s  %15s' % ("Msgs", "%Tot", "IRC Nick")
-        for user in usersByName(userTable):
-            msgs = count_messages(user, userTable)
+        for id in userTable:
+            msgs = count_messages(userTable[id])
             if msgs > 0:
-                print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/MSGCOUNT, user.nick)
+                print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/MSGCOUNT, userTable.idToName(id))
 
     if options.actions:
         print "Actions by user:"
         print '\t%s  %s  %15s' % ("Acts", "%Tot", "IRC Nick")
-        for user in usersByName(userTable):
-            acts = count_actions(user, userTable)
+        for id in userTable:
+            acts = count_actions(userTable[id])
             if acts > 0:
-                print '\t %3d  %.2f  %20s' % (acts, float(acts)/ACTCOUNT, user.nick)
+                print '\t %3d  %.2f  %20s' % (acts, float(acts)/ACTCOUNT, userTable.idToName(id))
 
     if options.lurkers: 
         lurkers = []
         semilurk = []
-        for user in usersByName(userTable):
-            stats = statsForUser(user, userTable)
+        for id in userTable:
+            user = userTable[id]
+            stats = statsForUser(user)
             if stats[1] == 0 and stats[2] == 0:
-                lurkers.append(user.nick)
+                lurkers.append(userTable.idToName(user.id))
             elif stats[2] == 0:
-                semilurk.append(user.nick)
+                semilurk.append(userTable.idToName(user.id))
         if len(lurkers) == 0:
             print "No Lurkers"
         else:

@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
+# Copyright (C) 2009  Joe Blaylock <jrbl@jrbl.org>
+#
+#This program is free software: you can redistribute it and/or modify it under 
+#the terms of the GNU General Public License as published by the Free Software 
+#Foundation, either version 3 of the License, or (at your option) any later 
+#version.
+#
+#This program is distributed in the hope that it will be useful, but WITHOUT 
+#ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+#FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more 
+#details.
+#
+#You should have received a copy of the GNU General Public License along with 
+#this program.  If not, see <http://www.gnu.org/licenses/>.
+"""Validates that the YAML file provided conforms to our expected format.
+"""
+
+# Imports
+import yaml
+
+
+expected_format = """uuid.uuid4-string:
+   'real name': some, text
+   'email': [ some, text ]
+   'irc': [ some, text ]
+   'wiki': [ some, text ]
+
+"""
+
+# Test Harness
+if __name__ == "__main__":
+    import optparse    
+    usage = "usage: %prog [file.yaml]"
+    parser = optparse.OptionParser(usage = usage)
+    parser.add_option('-f', '--format', dest="show_format", action="store_true", default=False,
+                      help="Display the expected YAML file format to the screen.")
+    
+    options, args = parser.parse_args()
+    if options.show_format:
+        print expected_format
+
+    if len(args) != 1: parser.error("Exactly one YAML file must be specified.")
+
+    file = open(args[0], 'r')
+    data = yaml.safe_load(file)
+
+    for key in data.keys():
+        # FIXME: should test for key to be valid uuid4
+        record = data[key]
+        name = record['real name']
+        # FIXME: should test if name is a string
+        email = record['email']
+        # FIXME: should test if email is a list of strings
+        irc = record['irc']
+        # FIXME: should test if irc is a list of strings
+        wiki = record['wiki']
+        # FIXME: should test if wiki is a list of strings
+
+    # If we haven't thrown an exception by now, we're fine.
+    print "OK"
