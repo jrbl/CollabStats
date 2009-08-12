@@ -112,10 +112,38 @@ class UserTable(object):
     def __contains__(self, key):
         return (key in self.__userObjectTable) or (key in self.__commonNames)
 
-    def merge(self, uid1, uid2):
-        """Makes UID1 and UID2 refer to the same user object; returns new UID"""
+    def merge(self, primary, secondary):
+        """Dereferences primary and secondary and copies secondary's data to primary."""
         # FIXME: Not implemented.  Important.
-        raise Exception, "Not Implemented"
+        pobj = self[primary]
+        pid = pobj.id
+        sobj = self[secondary]
+        sid = sobj.id
+
+        # yaml differences
+        if len(self.__yaml_data[sid]['real name']) > len(self.__yaml_data[pid]['real name']):
+            self.__yaml_data[pid]['real name'] = self.__yaml_data[sid]['real name']
+        for feature in ['email', 'irc', 'wiki']:
+            self.__yaml_data[pid][feature].extend( self.__yaml_data[sid][feature] )
+
+        # pickle differences
+        pobj.nicks.extend(sobj.nicks)
+        pobj.nicks.sort()
+        pobj.join_times.extend(sobj.join_times)
+        pobj.part_times.extend(sobj.part_times)
+        for time in sobj.messages:
+            pobj.messages[time] = sobj.messages[time]
+        for time in sobj.actions:
+            pobj.actions[time] = sobj.actions[time]
+
+        # update common names
+        for name in pobj.nicks:
+            self.__commonNames[name] = pid
+
+        # delete secondary
+        del(sobj)
+        del(self.__userObjectTable[sid])
+        del(self.__yaml_data[sid])
 
     def write_yaml(self, yaml_file = 'usernames.yaml'):
         """Write out a yaml file reflecting the current state of the user tables."""
