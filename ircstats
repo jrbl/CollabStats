@@ -25,68 +25,64 @@ Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 
 import xml.dom.minidom as md
 from xml.dom import NotSupportedErr as NotSupportedError
+from datetime import datetime
 
-from IRCUser import IRCUser
+from UserStats import UserStats
 import UserTable
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 DEBUG     = False
-VERSION   = "0.05x"
-LOG_START = None
-LOG_END   = None
+VERSION   = "0.1"
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-def getIRCUserForNick(irc_nick, ircUserTable):
+def getUserStatsForNick(irc_nick, userTable, logStartTime):
     """Checks whether we've ever seen this nick and returns the corresponding user"""
 
-    if irc_nick not in ircUserTable:
-        ircUserTable[irc_nick] = IRCUser(irc_nick, LOG_START)
+    if irc_nick not in userTable:
+        userTable[irc_nick] = UserStats(irc_nick, logStartTime, userTable.getID())
 
-    return ircUserTable[irc_nick]
+    return userTable[irc_nick]
 
 def handleLogDOM(dom, userTable):
     """Process the elements in a colloquy log DOM"""
-    global LOG_START 
-    LOG_START = dom.getAttribute('began')
+    logStartTime = datetime.strptime(dom.getAttribute('began')[:19], "%Y-%m-%d %H:%M:%S")
+    logEndTime = None
     for child in dom.childNodes:
         if child.tagName == u"envelope":         # one or more lines from a user
-            handleEnvelope(child, userTable)
+            logEndTime = handleEnvelope(child, userTable, logStartTime)
         elif child.tagName == u"event":          # IRC server event
             handleEvent(child, userTable)
         else:                                    # violates log spec
             raise NotSupportedError, "Unknown child node " + child.tagName
 
     for user in userTable.keys():
-        userTable[user].part(LOG_END)
+        userTable[user].part(logEndTime)
 
-def handleEnvelope(child, userTable):
+def handleEnvelope(child, userTable, logStartTime):
     """Pick the relevant data off of a blob of messages from a single user."""
 
-    global LOG_END
-    global MSGCOUNT
-    global ACTCOUNT
-
+    logEndTime = None
     irc_nick = getIrcNickAndValidate(child.getElementsByTagName('sender'))
-    user_object = getIRCUserForNick(irc_nick, userTable) 
+    user_object = getUserStatsForNick(irc_nick, userTable, logStartTime) 
 
     for message in child.getElementsByTagName('message'):
 
         timestamp = message.getAttribute('received')
+        timestamp = datetime.strptime(message.getAttribute('received')[:19], "%Y-%m-%d %H:%M:%S")
         pretty    = message.toprettyxml(encoding="utf-8")
 
         if message.getAttribute('type') == u"notice":
             handleMessageNotice(user_object, timestamp, pretty)
         elif message.getAttribute('action'):
             user_object.action(timestamp, pretty)
-            ACTCOUNT += 1
         else:
             user_object.message(timestamp, pretty)
-            MSGCOUNT += 1
 
-        LOG_END = timestamp
+        logEndTime = timestamp
     if DEBUG: print irc_nick
+    return logEndTime
 
 def handleMessageNotice(user_object, timestamp, message):
     print "------------------------------------------------------------------------------"
@@ -130,14 +126,25 @@ def usersByName(userTable):
     for name in sorted(userTable.keys()):
         yield userTable[name]
 
-def statsForUser(user):
-    """Returns (nick, message_count, act_count, message_ratio, act_ratio)"""
+def statsForUser(user, msgcount = None, actcount = None):
+    """Returns (nick, message_count, act_count, message_ratio, act_ratio)
+       
+    msgcount is the total count of messages seen since the dawn of time
+    actcount is the same, for actions
+
+    message_ratio is the ratio of messages this user produced, to all messages
+    act_ratio is the ratio of actions this user emitted, to all actions
+    """
 
     nick = user.nick
     msgs = count_messages(user)
     acts = count_actions(user)
-    msgrat = float(msgs)/MSGCOUNT
-    actrat = float(acts)/ACTCOUNT
+    msgrat = 0
+    actrat = 0
+    if msgcount != None:
+        msgrat = float(msgs)/msgcount
+    if actcount != None:
+        actrat = float(acts)/actcount
 
     return (nick, msgs, acts, msgrat, actrat)
 
@@ -179,7 +186,7 @@ if __name__ == "__main__":
     if options.debug: DEBUG = True
 
     # Read in on-disk data stores; set up mapping dictionaries
-    userTable = UserTable.UserTable(mapping_yaml = 'usernames.yaml', ircUsersDB = 'irc_users.pickle')
+    userTable = UserTable.UserTable(mapping_yaml = 'usernames.yaml', user_objects_db = 'irc_users.pickle')
     
     # Read in and process user log file
     for filename in args:
@@ -188,12 +195,12 @@ if __name__ == "__main__":
         handleLogDOM(dom.documentElement, userTable)
         dom.unlink()
 
-    MSGCOUNT, ACTCOUNT = count_everything(userTable)
+    msgcount, actcount = count_everything(userTable)
 
     if options.totals:
-        print "Total messages:", MSGCOUNT + ACTCOUNT
-        print "Messages:", MSGCOUNT
-        print "Actions:", ACTCOUNT
+        print "Total messages:", msgcount + actcount
+        print "Messages:", msgcount
+        print "Actions:", actcount
 
     if options.messages:
         print "Messages by user:"
@@ -201,7 +208,7 @@ if __name__ == "__main__":
         for id in userTable:
             msgs = count_messages(userTable[id])
             if msgs > 0:
-                print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/MSGCOUNT, userTable.idToName(id))
+                print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/msgcount, userTable.idToName(id))
 
     if options.actions:
         print "Actions by user:"
@@ -209,14 +216,14 @@ if __name__ == "__main__":
         for id in userTable:
             acts = count_actions(userTable[id])
             if acts > 0:
-                print '\t %3d  %.2f  %20s' % (acts, float(acts)/ACTCOUNT, userTable.idToName(id))
+                print '\t %3d  %.2f  %20s' % (acts, float(acts)/actcount, userTable.idToName(id))
 
     if options.lurkers: 
         lurkers = []
         semilurk = []
         for id in userTable:
             user = userTable[id]
-            stats = statsForUser(user)
+            stats = statsForUser(user, msgcount, actcount)
             if stats[1] == 0 and stats[2] == 0:
                 lurkers.append(userTable.idToName(user.id))
             elif stats[2] == 0:
@@ -241,7 +248,7 @@ if __name__ == "__main__":
         def statsTuples():
             yield ("IRC Nick", "Message Count", "Action Count", "Messages/Total Messages", "Actions/Total Actions")
             for user in usersByName(userTable):
-                yield statsForUser(user, userTable)
+                yield statsForUser(user, msgcount, actcount)
         csv.writer(sys.stdout, dialect="ooffice_like").writerows(statsTuples())
 
     userTable.close()

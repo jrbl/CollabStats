@@ -1,2 +1,11 @@
-ircstats      - tries to answer interesting questions about irc traffic
-                Works with Colloquy XML-formatted IRC logs
+ircstats       - tries to answer interesting questions about irc traffic
+                 Works with Colloquy XML-formatted IRC logs
+validate_yaml  - run before and after editing the usernames.yaml to make 
+                 sure it's formatted correctly.  Run with -f option to find
+                 out what format usernames.yaml should have.
+usernames.yaml - file mapping unique identifiers to real names, irc nicks, 
+                 email addresses and wiki IDs
+user_merges    - run to identify user information merge possibilities - 
+                 entities with different unique identifiers but similar 
+                 irc nicks might be the same individual.  Requires that 
+                 ircstats has been run at least once.

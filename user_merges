@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
+# Copyright (C) 2009  Joe Blaylock <jrbl@jrbl.org>
+#
+#This program is free software: you can redistribute it and/or modify it under 
+#the terms of the GNU General Public License as published by the Free Software 
+#Foundation, either version 3 of the License, or (at your option) any later 
+#version.
+#
+#This program is distributed in the hope that it will be useful, but WITHOUT 
+#ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+#FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more 
+#details.
+#
+#You should have received a copy of the GNU General Public License along with 
+#this program.  If not, see <http://www.gnu.org/licenses/>.
+"""Checks usernames.yaml for mergable records and suggests them.
+
+FIXME: should also provide merge functionality
+"""
+
+# Imports
+import yaml
+from UserTable import UserTable
+
+
+def match_report(userTable, n1, n1_mergelist, verbose=False):
+    """Returns a nice report suggesting that n1_mergelist be merged to n1."""
+    # FIXME: make verbose do something less obviously stupid
+    s = "The records on the right appear to be similar to the record on the left.\n"
+    s += "You may want to consider merging them:\n"
+    if not verbose:
+        s += n1 + ": " + str(n1_mergelist)
+    else:
+        s += yaml.dump(userTable[n1], indent=4)
+        s += "---\n"
+        for n1m in n1_mergelist:
+            s += yaml.dump(userTable[n1m], indent=4)
+    return s
+
+def editDistance(n1, n2):
+    """Return the number of edits to turn n1 into n2.
+
+    An edit is a character change, an insertion, or a deletion.
+    """
+    return 99 # FIXME: not implemented
+
+def fuzzy_match(n1, n2, epsilon = 3):
+    """Fuzzy matches n1 against n2.
+
+    epsilon specifies within how many edits two names match.  Defaults to 3.
+    Fuzzy match is related to edit distance and containment relationship.
+    Short circuits on possible matches.
+    """
+    # FIXME: use irc downcaser before comparison
+    if (n1.find(n2) != -1) or (n2.find(n1) != -1) or (editDistance(n1, n2) < epsilon):
+        return True
+    return False
+
+if __name__ == "__main__":
+    import optparse    
+    usage = "usage: %prog [usernames.yaml] [irc_users.pickle]"
+    parser = optparse.OptionParser(usage = usage)
+    
+    options, args = parser.parse_args()
+
+    user_table_file = ''
+    user_data_file = ''
+    if len(args) == 2:
+        user_table_file = args[0]
+        user_data_file = args[1]
+    elif len(args) == 1:
+        user_table_file = args[0]
+        user_data_file = 'irc_users.pickle'
+    elif len(args) == 0:
+        user_table_file = 'usernames.yaml'
+        user_data_file = 'irc_users.pickle'
+    else:
+        parser.error("Zero, one, or two files must be specified.")
+
+    # FIXME: should take irc_users.pickle on cli too
+    userTable = UserTable(user_table_file, user_data_file)
+    c_names = userTable._UserTable__commonNames            # XXX: Acknowledged to be dangerous
+
+    already_compared = {}
+    for name in c_names:
+        already_compared[name] = []
+
+    for name1 in c_names:
+        n1_mergelist = []
+        for name2 in c_names:
+            if (name1 == name2) or (name2 in already_compared[name1]) or (name1 in already_compared[name2]) or (c_names[name1] == c_names[name2]):
+                continue
+            
+            already_compared[name1].append(name2)
+            already_compared[name2].append(name1)
+            if fuzzy_match(name1, name2):
+                n1_mergelist.append(name2)
+        
+        if ( len(n1_mergelist) > 0 ):
+            print match_report(userTable, name1, n1_mergelist, verbose=False) # FIXME: verbose command line option

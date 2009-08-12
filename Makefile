@@ -1,7 +1,7 @@
 # GNU Makefile
 
-CODE_BITS=ircstats.py DictDB.py IRCUser.py UserTable.py validate_yaml
-DIST_BITS=$(CODE_BITS) CREDITS COPYING README Makefile 
+CODE_BITS=ircstats DictDB.py UserStats.py UserTable.py validate_yaml user_merges
+DIST_BITS=$(CODE_BITS) CREDITS COPYING README Makefile INSTALL
 DIST_TARGET=dist_dir
 LINT_OPTS=--max-line-length=120
 
@@ -28,4 +28,4 @@ dist: clean
 	done
 
 clean:
-	@rm -f *~ *.orig *.pyc
+	@rm -f *~ *.orig *.pyc *.bak

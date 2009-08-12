@@ -15,27 +15,28 @@
 #
 #You should have received a copy of the GNU General Public License along with 
 #this program.  If not, see <http://www.gnu.org/licenses/>.
-"""FIXME: summary line
+"""An object collecting data about a particular entity all in one place.
 
-FIXME: explanatory text.
+Currently set up for tracking IRC utterances and actions.
 """
-
-import uuid
 
 
 # Classes
-class IRCUser(object):
+class UserStats(object):
     """Models all the interesting stats pertaining to a particular entity on IRC"""
 
-    def __init__(self, nick, time):
+    def __init__(self, nick, time, uid = None):
         """nick is new to the log stream; create them and then join them."""
-        self.id         = str(uuid.uuid4())
+        if uid == None:
+            import uuid
+            self.id         = str(uuid.uuid4())
+        else:
+            self.id     = uid
         self.nick       = nick
         self.nicks      = [nick]
         self.join_times = []
         self.part_times = []
         self.messages   = {}           # XXX: no validation to prevent timestamp collisions
-        self.references = {}           # XXX: no validation to prevent timestamp collisions
         self.actions    = {}           # XXX: no validation to prevent timestamp collisions
         self.state      = 'new'        # new, joined, parted
         self.join(time)
@@ -67,7 +68,6 @@ class IRCUser(object):
         s += '\t' + 'joins' + ' ' + str([str(t) for t in self.join_times]) + '\n'
         s += '\t' + 'parts' + ' ' + str([str(t) for t in self.part_times]) + '\n'
         s += '\t' + 'said' + "  " + str(self.messages) + '\n'
-        s += '\t' + 'refTo' + ' ' + str(self.references) + '\n'
         s += '\t' + 'acts' + "  " + str(self.actions) + '\n'
         return s
 
