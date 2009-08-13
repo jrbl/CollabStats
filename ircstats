@@ -24,31 +24,33 @@ Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 """
 
 import xml.dom.minidom as md
-from xml.dom import NotSupportedErr as NotSupportedError
 from datetime import datetime
 
-from UserStats import UserStats
 import UserTable
 from ircColloquy import *
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 DEBUG     = False
-VERSION   = "0.1"
+VERSION   = "0.2"
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 
-def count_messages(user):
-    return len(user.messages.keys())
-
-def count_actions(user):
-    return len(user.actions.keys())
-        
-def usersByName(userTable):
+def usersByID(userTable):
     for name in sorted(userTable.keys()):
         yield userTable[name]
 
+def count_messages(user, day = None):
+    if day:
+        return len( [t for t in user.messages.keys() if t.date() == day] )
+    return len(user.messages.keys())
+
+def count_actions(user,day = None):
+    if day:
+        return len( [t for t in user.actions.keys() if t.date() == day] )
+    return len(user.actions.keys())
+        
 def statsForUser(user, msgcount = None, actcount = None):
     """Returns (nick, message_count, act_count, message_ratio, act_ratio)
        
@@ -71,14 +73,32 @@ def statsForUser(user, msgcount = None, actcount = None):
 
     return (nick, msgs, acts, msgrat, actrat)
 
-def count_everything(userTable):
-    """Make a complete pass through the user database, gathering the total count of messages and acts."""
+def count_everything(userTable, day = None):
+    """Make a complete pass through the user database, gathering the total count of messages and acts.
+
+    FIXME: this is an unbearably slow and stupid algorithm.  We should be computing and caching this data.
+    """
     msgcount = 0
     actcount = 0
     for id in userTable.keys():
-        msgcount += count_messages(userTable[id])
-        actcount += count_actions(userTable[id])
+        msgcount += count_messages(userTable[id], day)
+        actcount += count_actions(userTable[id], day)
     return (msgcount, actcount)
+
+def getDayList(userTable):
+    """Make a complete pass through the user database, gathering information about what days had activity.
+       
+    FIXME: this is an unbearably slow and stupid algorithm.  We should be computing and caching this data.
+    """
+    daylist = []
+    for id in userTable.keys():
+        for d in [t.date() for t in userTable[id].messages.keys()]:
+            if d not in daylist:
+                daylist.append(d)
+        for d in [t.date() for t in userTable[id].actions.keys()]:
+            if d not in daylist:
+                daylist.append(d)
+    return daylist
 
 def setup_optparse():
     import optparse
@@ -99,6 +119,27 @@ def setup_optparse():
     options, args = parser.parse_args()
     return parser
 
+def getReportHeader(typeword, daylist):
+    header = typeword + " by user:\n"
+    header += "\t%4s  %4s  %20s " % ("All", "All", " ")
+    for day in daylist:
+        sd = str(day)
+        header += "  %10s %10s" % (sd, sd)
+    header += '\n'
+    header += '\t%4s  %4s  %15s      ' % ("Msgs", "%Tot", "IRC Nick")
+    for day in daylist:
+        header += "  %10s %10s" % ("Msgs", "%Tot")
+    return header
+
+def getReportLineByFunc(func, total, table, eco, daylist):
+    for id in table:
+        res = func( table[id] )
+        if res > 0:
+            line = '\t %3d  %.2f  %20s ' % ( res, float(res)/total, table.idToName(id) )
+            for day in daylist:
+                m, a = eco[ day ]
+                line += "  %10d %10.2f" % ( res, float(res)/m )
+            yield line
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 if __name__ == "__main__":
@@ -119,31 +160,40 @@ if __name__ == "__main__":
         dom.unlink()
 
     msgcount, actcount = count_everything(userTable)
+    daylist = getDayList(userTable)
+
+    everything_counted_once = {}
+    for day in daylist:
+        everything_counted_once[day] = count_everything(userTable, day)
 
     if options.totals:
         print "Total messages:", msgcount + actcount
         print "Messages:", msgcount
         print "Actions:", actcount
+        print "%10s %10s %10s" % ("Date", "Messages", "Actions")
+        for day in daylist:
+            m, a = everything_counted_once[day]
+            print "%10s %10s %10s" % (str(day), str(m), str(a) )
 
     if options.messages:
-        print "Messages by user:"
-        print '\t%s  %s  %15s' % ("Msgs", "%Tot", "IRC Nick")
-        for id in userTable:
-            msgs = count_messages(userTable[id])
-            if msgs > 0:
-                print '\t %3d  %.2f  %20s' % (msgs, float(msgs)/msgcount, userTable.idToName(id))
+        print getReportHeader("Messages", daylist)
+        for line in getReportLineByFunc(count_messages, msgcount, userTable, everything_counted_once, daylist):
+            print line
 
     if options.actions:
-        print "Actions by user:"
-        print '\t%s  %s  %15s' % ("Acts", "%Tot", "IRC Nick")
-        for id in userTable:
-            acts = count_actions(userTable[id])
-            if acts > 0:
-                print '\t %3d  %.2f  %20s' % (acts, float(acts)/actcount, userTable.idToName(id))
+        print getReportHeader("Actions", daylist)
+        for line in getReportLineByFunc(count_actions, actcount, userTable, everything_counted_once, daylist):
+            print line
 
-    if options.lurkers: 
+    if options.lurkers: # FIXME
         lurkers = []
         semilurk = []
+        header = "Lurkers and Action-only Users:\n"
+        header += "%20s  " % "Name"
+        for day in daylist:
+            header += "%10s  " % str(day)
+        print header
+
         for id in userTable:
             user = userTable[id]
             stats = statsForUser(user, msgcount, actcount)
@@ -151,12 +201,8 @@ if __name__ == "__main__":
                 lurkers.append(userTable.idToName(user.id))
             elif stats[2] == 0:
                 semilurk.append(userTable.idToName(user.id))
-        if len(lurkers) == 0:
-            print "No Lurkers"
-        else:
-            print "Lurkers:"
-            for name in lurkers:
-                print '\t %s' % name
+        for name in lurkers: 
+            print '%20s' % name
         if len(semilurk) == 0:
             print "No action-only users"
         else:
@@ -164,13 +210,13 @@ if __name__ == "__main__":
             for name in semilurk:
                 print '\t %s' % name
 
-    if options.csv:
+    if options.csv: # FIXME
         import csv, sys
         csv.register_dialect("ooffice_like", delimiter=',', skipinitialspace=True, 
                                                             lineterminator="\n", quoting=csv.QUOTE_NONNUMERIC)
         def statsTuples():
             yield ("IRC Nick", "Message Count", "Action Count", "Messages/Total Messages", "Actions/Total Actions")
-            for user in usersByName(userTable):
+            for user in usersByID(userTable):
                 yield statsForUser(user, msgcount, actcount)
         csv.writer(sys.stdout, dialect="ooffice_like").writerows(statsTuples())
 
