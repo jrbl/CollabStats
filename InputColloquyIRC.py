@@ -17,7 +17,7 @@
 #this program.  If not, see <http://www.gnu.org/licenses/>.
 """XML parser for Collquy XML-formatted IRC transcripts.
 
-Currently just a pile of functions.  Safe for "from ircColloquy import *".
+Currently just a pile of functions.  Safe for "from InputColloquyIRC import *".
 """
 
 from xml.dom import NotSupportedErr as NotSupportedError

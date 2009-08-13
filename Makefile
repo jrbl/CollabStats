@@ -1,6 +1,6 @@
 # GNU Makefile
 
-CODE_BITS=ircstats DictDB.py UserStats.py UserTable.py validate_yaml user_merges ircColloquy.py
+CODE_BITS=ircstats DictDB.py UserStats.py UserTable.py validate_yaml user_merges InputColloquyIRC.py
 DIST_BITS=$(CODE_BITS) CREDITS COPYING README Makefile INSTALL
 DIST_TARGET=dist_dir
 LINT_OPTS=--max-line-length=120
