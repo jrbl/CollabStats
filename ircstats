@@ -29,6 +29,7 @@ from datetime import datetime
 
 from UserStats import UserStats
 import UserTable
+from ircColloquy import *
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
@@ -37,84 +38,6 @@ VERSION   = "0.1"
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
-def getUserStatsForNick(irc_nick, userTable, logStartTime):
-    """Checks whether we've ever seen this nick and returns the corresponding user"""
-
-    if irc_nick not in userTable:
-        userTable[irc_nick] = UserStats(irc_nick, logStartTime, userTable.getID())
-
-    return userTable[irc_nick]
-
-def handleLogDOM(dom, userTable):
-    """Process the elements in a colloquy log DOM"""
-    logStartTime = datetime.strptime(dom.getAttribute('began')[:19], "%Y-%m-%d %H:%M:%S")
-    logEndTime = None
-    for child in dom.childNodes:
-        if child.tagName == u"envelope":         # one or more lines from a user
-            logEndTime = handleEnvelope(child, userTable, logStartTime)
-        elif child.tagName == u"event":          # IRC server event
-            handleEvent(child, userTable)
-        else:                                    # violates log spec
-            raise NotSupportedError, "Unknown child node " + child.tagName
-
-    for user in userTable.keys():
-        userTable[user].part(logEndTime)
-
-def handleEnvelope(child, userTable, logStartTime):
-    """Pick the relevant data off of a blob of messages from a single user."""
-
-    logEndTime = None
-    irc_nick = getIrcNickAndValidate(child.getElementsByTagName('sender'))
-    user_object = getUserStatsForNick(irc_nick, userTable, logStartTime) 
-
-    for message in child.getElementsByTagName('message'):
-
-        timestamp = message.getAttribute('received')
-        timestamp = datetime.strptime(message.getAttribute('received')[:19], "%Y-%m-%d %H:%M:%S")
-        pretty    = message.toprettyxml(encoding="utf-8")
-
-        if message.getAttribute('type') == u"notice":
-            handleMessageNotice(user_object, timestamp, pretty)
-        elif message.getAttribute('action'):
-            user_object.action(timestamp, pretty)
-        else:
-            user_object.message(timestamp, pretty)
-
-        logEndTime = timestamp
-    if DEBUG: print irc_nick
-    return logEndTime
-
-def handleMessageNotice(user_object, timestamp, message):
-    print "------------------------------------------------------------------------------"
-    print "System notice detected, but currently unsupported by the parser."
-    print "Now that there's some sample input for what notices look like,"
-    print "this can be fixed."
-    print
-    print message
-    print "------------------------------------------------------------------------------"
-
-def handleEvent(child, userTable):
-    print "------------------------------------------------------------------------------"
-    print "Event detected, but currently unsupported by the parser."
-    print "Now that there's some sample input for what events look like,"
-    print "this can be fixed."
-    print
-    print "After event handling is implemented, re-run this script for more"
-    print "accurate stats."
-    print 
-    print child
-    print "------------------------------------------------------------------------------"
-
-def getIrcNickAndValidate(element_list):
-    first = element_list[0]
-    if len(element_list) > 1:
-        parent = first.parentNode
-        raise NotSupportedError, "Multiple senders on node: " + parent.toprettyxml()
-    id = first.getAttribute('identifier')
-    if id == '':
-        return first.firstChild.nodeValue
-    else: 
-        return id
 
 def count_messages(user):
     return len(user.messages.keys())
@@ -190,7 +113,7 @@ if __name__ == "__main__":
     
     # Read in and process user log file
     for filename in args:
-        dom = md.parse(filename)
+        dom = md.parse(filename)                           # should be in ircColloquy.py?
         assert dom.documentElement.tagName == u"log"
         handleLogDOM(dom.documentElement, userTable)
         dom.unlink()

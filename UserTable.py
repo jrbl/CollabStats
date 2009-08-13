@@ -72,13 +72,15 @@ class UserTable(object):
             nicks = self.__yaml_data[id]['irc']
             if real_name != '':
                 self.__commonNames[real_name] = id
-            for nick in nicks:
-                self.__commonNames[nick] = id
             if id not in self.__userObjectTable:
                 user_object = UserStats( nicks[0], -1, id ) # XXX: should timestamp properly
                 for nick in nicks: 
                     user_object.addNick(nick)
                 self.__userObjectTable[id] = user_object
+            for nick in nicks:
+                self.__commonNames[nick] = id
+                if nick not in self.__userObjectTable[id].nicks:
+                    self.__userObjectTable[id].nicks.append(nick)
 
     def getID(self):
         """Gets the next number in the ID sequence.  NOT THREAD SAFE"""
@@ -183,7 +185,7 @@ class UserTable(object):
             record = self.__yaml_data[id]
             name = record['real name']
             if name != '': return name
-        else: return self.__userObjectTable[id].nicks[0]
+        return self.__userObjectTable[id].nicks[0]
 
             
 
