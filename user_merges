@@ -129,8 +129,11 @@ if __name__ == "__main__":
     parser = optparse.OptionParser(usage = usage)
     parser.add_option('-n', "--no-scan", dest="scan", action="store_false", default=True, 
                       help="Disable interactive data scan; useful along with -f.")
+    parser.add_option('-i', "--id-merge", action="store", nargs=2, type="int",
+                      dest="merge_ids", metavar="id1 id2", 
+                      help="Force the merger of data for id1 and id2, regardless of scan results.  Use with care.")
     parser.add_option('-f', "--force-merge", action="store", nargs=2, 
-                      dest="merge_ids", metavar="nick1 nick2", 
+                      dest="merge_nicks", metavar="nick1 nick2", 
                       help="Force the merger of data for nick1 and nick2, regardless of scan results.  Use with care.")
     
     options, args = parser.parse_args()
@@ -152,10 +155,16 @@ if __name__ == "__main__":
     userTable = UserTable(user_table_file, user_data_file)
     c_names = userTable._UserTable__commonNames            # XXX: Acknowledged to be dangerous
 
-    if options.merge_ids:
+    if options.merge_nicks:
         nick1, nick2 = options.merge_ids
         print "Forcing merge of " + str(nick1) + " and " + str(nick2) + "...",
         userTable.merge(nick1, nick2)
+        print " done."
+
+    if options.merge_ids:
+        id1, id2 = options.merge_ids
+        print "Forcing merge of " + str(id1) + " and " + str(id2) + "...",
+        userTable.merge(id1, id2)
         print " done."
 
     if options.scan:
@@ -163,6 +172,15 @@ if __name__ == "__main__":
             primary = names[0]
             for secondary in names[1:]:
                 userTable.merge(primary, secondary)
+
+        for name in c_names:
+            shorter = name.rstrip('-_')
+            if shorter not in c_names:
+                print match_report(userTable, name, [shorter], verbose=False)
+                selection = raw_input("merg?  y/N  -> ")
+                if len(selection) < 1: continue
+                if selection.lower()[0] == 'y':
+                    userTable[name].addNick(shorter)
 
 
     userTable.close()

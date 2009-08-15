@@ -114,9 +114,8 @@ class UserTable(object):
     def __contains__(self, key):
         return (key in self.__userObjectTable) or (key in self.__commonNames)
 
-    def merge(self, primary, secondary):
+    def merge(self, primary, secondary, no_retry = False):
         """Dereferences primary and secondary and copies secondary's data to primary."""
-        # FIXME: Not implemented.  Important.
         pobj = self[primary]
         pid = pobj.id
         sobj = self[secondary]
