@@ -158,6 +158,8 @@ class UserTable(object):
         
         if os.access(yaml_file, os.F_OK) and os.access(yaml_file, os.W_OK):
             os.rename(yaml_file, yaml_file+'.bak')
+        else:
+            print "Couldn't write YAML "+yaml_file+"; os access not ok."
         f = open(yaml_file, 'wb')
         yaml.dump(new_yaml_data, f, indent=4)
 

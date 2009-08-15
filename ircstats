@@ -147,7 +147,7 @@ def getReportHeader(typeword, daylist, short = " cnt"):
         sd = str(day)
         header += "  %10s %10s" % (sd, sd)
     header += '\n'
-    header += '\t%4s  %4s  %15s      ' % (short, "%Tot", "IRC Nick")
+    header += '\t%4s  %4s  %15s      ' % (short, "%Tot", "Name/Nick")
     for day in daylist:
         header += "  %10s %10s" % (short, "%Tot")
     return header

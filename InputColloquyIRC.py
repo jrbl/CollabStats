@@ -38,9 +38,14 @@ def handleLogDOM(dom, userTable):
     logStartTime = datetime.strptime(dom.getAttribute('began')[:19], "%Y-%m-%d %H:%M:%S")
     logEndTime = None
     for child in dom.childNodes:
-        if child.tagName == u"envelope":         # one or more lines from a user
+        if child.nodeName == u"envelope":         # one or more lines from a user
             logEndTime = handleEnvelope(child, userTable, logStartTime)
-        elif child.tagName == u"event":          # IRC server event
+        elif child.nodeName == "#text":
+            for c in child.data:
+                if c not in '\t\n\x0b\x0c\r ':
+                    print "Unexpected text node: \"" + str(child.data) + "\""
+                    print "continuing..."
+        elif child.nodeName == u"event":          # IRC server event
             handleEvent(child, userTable)
         else:                                    # violates log spec
             raise NotSupportedError, "Unknown child node " + child.tagName
