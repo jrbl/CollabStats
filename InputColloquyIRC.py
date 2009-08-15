@@ -46,7 +46,7 @@ def handleLogDOM(dom, userTable):
                     print "Unexpected text node: \"" + str(child.data) + "\""
                     print "continuing..."
         elif child.nodeName == u"event":          # IRC server event
-            handleEvent(child, userTable)
+            logEndTime = handleEvent(child, userTable, logStartTime)
         else:                                    # violates log spec
             raise NotSupportedError, "Unknown child node " + child.tagName
 
@@ -63,7 +63,7 @@ def handleEnvelope(child, userTable, logStartTime):
     for message in child.getElementsByTagName('message'):
 
         timestamp = message.getAttribute('received')
-        timestamp = datetime.strptime(message.getAttribute('received')[:19], "%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.strptime(timestamp[:19], "%Y-%m-%d %H:%M:%S")
         pretty    = message.toprettyxml(encoding="utf-8")
 
         if message.getAttribute('type') == u"notice":
@@ -85,17 +85,36 @@ def handleMessageNotice(user_object, timestamp, message):
     print message
     print "------------------------------------------------------------------------------"
 
-def handleEvent(child, userTable):
-    print "------------------------------------------------------------------------------"
-    print "Event detected, but currently unsupported by the parser."
-    print "Now that there's some sample input for what events look like,"
-    print "this can be fixed."
-    print
-    print "After event handling is implemented, re-run this script for more"
-    print "accurate stats."
-    print 
-    print child
-    print "------------------------------------------------------------------------------"
+def handleEvent(child, userTable, logStartTime):
+    logEndTime = None
+    timestamp = child.getAttribute('occurred')
+    event_name = child.getAttribute('name')
+    timestamp = datetime.strptime(timestamp[:19], "%Y-%m-%d %H:%M:%S")
+    irc_nick = getIrcNickAndValidate(child.getElementsByTagName('who'))
+
+    if event_name == "memberParted":
+        user_object = getUserStatsForNick(irc_nick, userTable, logStartTime)
+        user_object.part(timestamp)
+    elif event_name == "memberJoined":
+        user_object = getUserStatsForNick(irc_nick, userTable, logStartTime)
+        user_object.join(timestamp)
+    elif event_name == "memberNewNickname":
+        new = irc_nick
+        old = getIrcNickAndValidate(child.getElementsByTagName('old'))
+        user_object = getUserStatsForNick(old, userTable, logStartTime)
+        user_object.addNick(new)
+    elif event_name == "newNickname":
+        s = "Warning: Transcript Recorder Changed Names\n"
+        s +="Colloquy doesn't record the transcript creator's nick before a rename occurs\n"
+        s +="so you may want to manually add the tag:\n"
+        s +=irc_nick + "\n"
+        s +="to the list of alternate names for whoever created this transcript."
+        print s
+    else:
+        print "Unhandled event "+event_name
+
+    logEndTime = timestamp
+    return logEndTime
 
 def getIrcNickAndValidate(element_list):
     first = element_list[0]
