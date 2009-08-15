@@ -25,6 +25,15 @@ from datetime import datetime
 
 from UserStats import UserStats
 
+def ircLower(s):
+    """Convert the input string to all-lower-case, with attempts to respect RFC 2812 s2.2"""
+    s = s.lower()
+    s.replace('[', '{')
+    s.replace(']', '}')
+    s.replace('\\', '|')
+    s.replace('~', '^')
+    return s
+
 def getUserStatsForNick(irc_nick, userTable, logStartTime):
     """Checks whether we've ever seen this nick and returns the corresponding user"""
 
@@ -123,8 +132,8 @@ def getIrcNickAndValidate(element_list):
         raise NotSupportedError, "Multiple senders on node: " + parent.toprettyxml()
     id = first.getAttribute('identifier')
     if id == '':
-        return first.firstChild.nodeValue
+        return ircLower(first.firstChild.nodeValue)
     else: 
-        return id
+        return ircLower(id)
 
 

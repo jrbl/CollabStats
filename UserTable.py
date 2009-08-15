@@ -125,10 +125,10 @@ class UserTable(object):
         if len(self.__yaml_data[sid]['real name']) > len(self.__yaml_data[pid]['real name']):
             self.__yaml_data[pid]['real name'] = self.__yaml_data[sid]['real name']
         for feature in ['email', 'irc', 'wiki']:
-            self.__yaml_data[pid][feature].extend( self.__yaml_data[sid][feature] )
+            self.__yaml_data[pid][feature].extend( [f for f in self.__yaml_data[sid][feature] if (f != '') and (f not in self.__yaml_data[pid][feature])] )
 
         # pickle differences
-        pobj.nicks.extend(sobj.nicks)
+        pobj.nicks.extend([nick for nick in sobj.nicks if (nick not in pobj.nicks) and (nick != '')])
         pobj.nicks.sort()
         pobj.join_times.extend(sobj.join_times)
         pobj.part_times.extend(sobj.part_times)

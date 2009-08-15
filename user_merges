@@ -156,7 +156,7 @@ if __name__ == "__main__":
     c_names = userTable._UserTable__commonNames            # XXX: Acknowledged to be dangerous
 
     if options.merge_nicks:
-        nick1, nick2 = options.merge_ids
+        nick1, nick2 = options.merge_nicks
         print "Forcing merge of " + str(nick1) + " and " + str(nick2) + "...",
         userTable.merge(nick1, nick2)
         print " done."
