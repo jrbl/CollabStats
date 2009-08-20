@@ -24,7 +24,15 @@ FIXME: Uses a DOM parser; should obviously get re-built around SAX
 import sys
 from xml.dom import minidom as md
 from datetime import datetime
+import re
 
+
+#### 
+# Proposals were in Proposals/ until a certain date, and then they were all supposed to be moved to 
+# Proposals:, and most of them were.  But b/c of policy decisions and the way Mediawiki does data
+# dumps, we have to cope with the ugly reality
+### FIXME: we should actually support this, but more discussion about the right thing needs to happen
+dateProposalsChanged = datetime(2009, 8, 3) # XXX: Probably incorrect date; get good one from Eugene
 
 # Classes
 
@@ -135,7 +143,7 @@ def editorList(revlist, getter = getRevEditor):
         if editor not in edlist: edlist.append(editor)
     return sorted(edlist)
 
-def countEverythingByDate(event_index):
+def summaryCountsByDate(event_index):
 
     total_pages         = {}
     total_content_pages = {}
@@ -145,6 +153,8 @@ def countEverythingByDate(event_index):
 
     for date in sorted(event_index.keys()):
         output = [str(date.date())]
+        proposal_re    = re.compile("^(Proposal:)|(Proposals/)")
+        non_content_re = re.compile("^(User:)|(Talk )|(.+ talk:)")
 
         proposals_edited     = 0
         new_proposals_today  = 0
@@ -162,17 +172,22 @@ def countEverythingByDate(event_index):
                 new_flag = True
                 total_pages[pagename] = date
             if new_flag:
-                if (pagename.find("Talk:") != 0) and (pagename.find("User:") != 0):      # XXX: "regular" pages
+                #if (pagename.find("Talk:") != 0) and (pagename.find("User:") != 0):      # XXX: "regular" pages
+                if proposal_re.match(pagename):
+                    total_proposals[pagename] = date
+                elif not non_content_re.match(pagename): 
                     total_content_pages[pagename] = date
-            if new_flag and pagename.find('Proposal') == 0:
-                total_proposals[pagename] = date
+            #if new_flag and pagename.find('Proposal') == 0:
+            #if new_flag and proposal_re.match(pagename):
+            #    total_proposals[pagename] = date
             for editor in editorList(revlist, getRegEditorOnly):
                 if editor not in registered_users:
                     registered_users[editor] = date
             total_edits += len(revlist)
 
             # Proposal Stats
-            if pagename.find('Proposal') == 0:
+            #if pagename.find('Proposal') == 0:
+            if proposal_re.match(pagename):
                 proposals_edited += 1
                 proposal_edits  += len(revlist)
                 if new_flag: new_proposals_today += 1
@@ -185,7 +200,7 @@ def countEverythingByDate(event_index):
         output.extend( (proposals_edited, new_proposals_today, proposal_edits, proposal_registered_editors, proposal_editors) )  
         yield output
 
-def getCSVHeaders():
+def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
 
         Date: a day.
@@ -214,48 +229,9 @@ def getCSVHeaders():
     output.extend( ('Proposals Edited', 'New Proposals', 'Proposal Edits', 'Proposal Reg Editors', 'Proposal Editors') )  
     return output
 
-def getCSVFooter():
-    """Disclaimers and explanatory text."""
-    pass
-
-def philippeStatsByDate(event_index):
-    total_pages         = {}
-    total_content_pages = {}
-    registered_users    = {}
-    total_edits         = 0
-    for date in sorted(event_index.keys()):
-        for page in event_index[date].keys():
-            pagename = getPageTitleText(page)
-            if pagename not in total_pages: total_pages[pagename] = date
-            if pagename not in total_content_pages:
-                if (pagename.find("Talk:") != 0) and (pagename.find("User:") != 0):
-                    total_content_pages[pagename] = date
-            for editor in editorList(event_index[date][page], getRegEditorOnly):
-                if editor not in registered_users:
-                    registered_users[editor] = date
-            total_edits += len(event_index[date][page])
-        yield len(total_pages.keys()), len(total_content_pages.keys()), len(registered_users.keys()), total_edits
-
-def proposalsByDate(event_index):
-
-    for date in sorted(event_index.keys()):
-        output = [str(date.date())]
-        prop_counter      = 0
-        new_prop_counter  = 0
-        prop_edit_count   = 0
-        prop_editor_count = 0
-        for page in sorted(event_index[date].keys()):
-            pagename = getPageTitleText(page)
-            if pagename.find('Proposal') == 0:             # Proposal and Proposal talk
-                prop_counter   += 1
-                prop_edit_count += len(event_index[date][page])
-                if hasFirstRev(event_index[date][page]): new_prop_counter += 1
-                editors = editorList(event_index[date][page])
-                prop_editor_count += len(editors)
-                if None in editors: 
-                    prop_editor_count -= 1
-        output.extend( (prop_counter, new_prop_counter, prop_edit_count, prop_editor_count) )      # Proposal Stats
-        yield output
+def statsSummary(dumpDOM):
+    event_index = buildEventIndex(eventStream(dumpDOM))
+    csvOut(summaryCountsByDate(event_index), header=getSummaryCSVHeaders())
 
 def csvOut(iterable, file_obj=sys.stdout, header=None):
     import csv
@@ -265,18 +241,20 @@ def csvOut(iterable, file_obj=sys.stdout, header=None):
     for collection in iterable:
         csv.writer(file_obj, dialect="ooffice_like").writerow(collection)
 
-def main():
-
-    dumpDOM = getDOM()
-    pages = wikiPages(dumpDOM.firstChild)
-
-    event_index = buildEventIndex(eventStream(dumpDOM))
-
-    csvOut(countEverythingByDate(event_index), header=getCSVHeaders())
-
-    dumpDOM.unlink()
-
 
 # Test Harness
 if __name__ == "__main__":
-    main()
+    import optparse    
+    usage = "usage: %prog"
+    parser = optparse.OptionParser(usage = usage)
+    parser.add_option('-s', '--summary', dest="summary_stats", action="store_true", default=False,
+                         help="Whole-archive summary stats, including proposal stats")
+    
+    opts, args = parser.parse_args()
+
+    dumpDOM = getDOM()
+
+    if opts.summary_stats:
+        statsSummary(dumpDOM)
+
+    dumpDOM.unlink()
