@@ -143,6 +143,15 @@ def editorList(revlist, getter = getRevEditor):
         if editor not in edlist: edlist.append(editor)
     return sorted(edlist)
 
+def countedEditorList(revlist):
+    edlist = {}
+    for rev in revlist:
+        editor = getRegEditorOnly(rev)
+        if editor == None: continue
+        if editor not in edlist: edlist[editor] = 1
+        else: edlist[editor] += 1
+    return edlist.items()
+
 def summaryCountsByDate(event_index):
 
     total_pages         = {}
@@ -150,6 +159,7 @@ def summaryCountsByDate(event_index):
     total_proposals     = {}
     registered_users    = {}
     total_edits         = 0
+    new_reg_users       = 0
 
     for date in sorted(event_index.keys()):
         output = [str(date.date())]
@@ -162,6 +172,10 @@ def summaryCountsByDate(event_index):
         proposal_editors     = 0
         proposal_registered_editors = 0
 
+        edits_by_pages       = [ ]
+        new_pages_today      = [ ]
+        authors_today        = {}
+
         for page in sorted(event_index[date].keys()):
             new_flag     = False
             revlist      = event_index[date][page]
@@ -172,21 +186,17 @@ def summaryCountsByDate(event_index):
                 new_flag = True
                 total_pages[pagename] = date
             if new_flag:
-                #if (pagename.find("Talk:") != 0) and (pagename.find("User:") != 0):      # XXX: "regular" pages
                 if proposal_re.match(pagename):
                     total_proposals[pagename] = date
                 elif not non_content_re.match(pagename): 
                     total_content_pages[pagename] = date
-            #if new_flag and pagename.find('Proposal') == 0:
-            #if new_flag and proposal_re.match(pagename):
-            #    total_proposals[pagename] = date
             for editor in editorList(revlist, getRegEditorOnly):
                 if editor not in registered_users:
                     registered_users[editor] = date
+                    new_reg_users += 1
             total_edits += len(revlist)
 
             # Proposal Stats
-            #if pagename.find('Proposal') == 0:
             if proposal_re.match(pagename):
                 proposals_edited += 1
                 proposal_edits  += len(revlist)
@@ -196,8 +206,22 @@ def summaryCountsByDate(event_index):
                 proposal_editors += len(editors)
                 if None in editors: proposal_editors -= 1
 
-        output.extend( (len(total_content_pages.keys()), len(total_pages.keys()), len(registered_users.keys()), total_edits, len(total_proposals.keys())) )
-        output.extend( (proposals_edited, new_proposals_today, proposal_edits, proposal_registered_editors, proposal_editors) )  
+            # Erik's stats Pt. 1
+            edits_by_pages.append(len(revlist))
+            if new_flag:
+                new_pages_today.append(pagename)
+            for editor in countedEditorList(revlist):
+                if editor[0] in authors_today: authors_today[editor[0]] += editor[1]
+                else: authors_today[editor[0]] = editor[1]
+
+        # Erik's stats Pt. 2
+        ed_per_pg_tot = sum(edits_by_pages)    
+        ed_per_pg_avg = float(len(event_index[date].keys()))/ed_per_pg_tot if ed_per_pg_tot else 0
+        eds5_today = [x[0] for x in authors_today.items() if x[1] >= 5]
+
+        output.extend( (len(total_content_pages.keys()), len(total_pages.keys()), len(registered_users.keys()), total_edits, new_reg_users) )
+        output.extend( (len(total_proposals.keys()), proposals_edited, new_proposals_today, proposal_edits, proposal_registered_editors, proposal_editors) )  
+        output.extend( (ed_per_pg_avg, len(new_pages_today), len(eds5_today), eds5_today) )
         yield output
 
 def getSummaryCSVHeaders():
@@ -225,8 +249,9 @@ def getSummaryCSVHeaders():
     """
 
     output = []
-    output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Registered Users', 'Total Edits', 'Total Proposals') )
+    output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Registered Users', 'Total Edits', 'New Registered Users', 'Total Proposals') )
     output.extend( ('Proposals Edited', 'New Proposals', 'Proposal Edits', 'Proposal Reg Editors', 'Proposal Editors') )  
+    output.extend( ('Edits/Page Today', 'New Pages Today', '# Editors w/5+ Today', 'Editors w/5+ Today') )  
     return output
 
 def statsSummary(dumpDOM):
