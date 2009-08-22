@@ -156,11 +156,12 @@ class UserTable(object):
                 new_yaml_data[key] = self.yamlifyUserStats(self.__userObjectTable[key])
         
         if os.access(yaml_file, os.F_OK) and os.access(yaml_file, os.W_OK):
-            os.rename(yaml_file, yaml_file+'.bak')
+            os.rename(yaml_file, yaml_file+'.usertable.bak')
+        if os.access(os.getcwd(), os.W_OK):
+            f = open(yaml_file, 'wb')
+            yaml.dump(new_yaml_data, f, indent=4)
         else:
-            print "Couldn't write YAML "+yaml_file+"; os access not ok."
-        f = open(yaml_file, 'wb')
-        yaml.dump(new_yaml_data, f, indent=4)
+            print "ERROR: Couldn't write YAML "+yaml_file+"; bad OS access.  Incorrect permissions?"
 
     def close(self):
         """Write out our data files"""

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python                  
 # -*- coding: utf-8 -*-
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 # Copyright (C) 2009  Joe Blaylock <jrbl@jrbl.org>
@@ -21,12 +21,13 @@ FIXME: Uses a DOM parser; should obviously get re-built around SAX
 """
 
 # Imports
-import sys
+import os, sys
 from xml.dom import minidom as md
 from datetime import datetime
 import re
 import difflib
 
+import yaml
 
 #### 
 # Proposals were in Proposals/ until a certain date, and then they were all supposed to be moved to 
@@ -35,15 +36,19 @@ import difflib
 ### FIXME: we should actually support this, but more discussion about the right thing needs to happen
 dateProposalsChanged = datetime(2009, 8, 3) # XXX: Probably incorrect date; get good one from Eugene
 
+VERBOSE    = False
+YAML_DATA  = None
+YAML_INDEX = None
+
 # Classes
 
 
 # Utility Functions
 def getDOM(file = "strategywiki-20090818-pages-meta-history.xml"):
-    sys.stderr.write(str(datetime.now()) + " Reading XML Dump into memory...\n")
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Reading XML Dump into memory...\n")
     dd = md.parse(file)
     assert dd.documentElement.tagName == u"mediawiki"
-    sys.stderr.write(str(datetime.now()) + " ...done.\n")
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " ...done.\n")
     return dd
 
 def wikiPages(wikiDOM):
@@ -88,10 +93,26 @@ def eventStream(wikiDOM):
 def editorStream(wikiDOM):
     editors = wikiDOM.getElementsByTagName('username')
     for e in editors:
-        ed = getElementText(e)
+        ed = lookupOrAdd(getElementText(e))
         rev = e.parentNode.parentNode
         dt = dateStrOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         yield (ed, rev, dt)
+
+def lookupOrAdd(name):
+    """Looks up name in YAML_DATA, adds it if its not present.
+
+    Tries to dereference to real name.
+    """
+    if (YAML_DATA == None or YAML_INDEX == None):
+        return name
+    try:
+        yam  = YAML_DATA[YAML_INDEX[name]]
+        real = yam['real name']
+    except KeyError:
+        addNameTo_yaml(name)
+        real = ''
+    if real == '': return name
+    else:          return real
 
 def buildEventIndex(event_stream):
     event_index = {}
@@ -139,17 +160,24 @@ def sortedRevs(revlist):
         else: return 1
     return sorted(revlist, cmp)
 
-def getRevEditor(revision):
-    revision = revision[1]
+def getRevEditor(rev, registered_only=False):
+    """Given a (timestamp, revision) pair, determine the name of the revs author.
+
+    If registered_only is True, will return the names of registered wiki editors
+    or None if unknown.  If registered_only is False (the default), will return 
+    the IP address if the username is unknown.
+    """
+    revision = rev[1]
     usernames = revision.getElementsByTagName('username')
     ips       = revision.getElementsByTagName('ip')
     if len(usernames) == 0:
+        if registered_only: return None
         if len(ips) > 0:
             return getElementText(ips[0])
         else:
-            return None # should only happen w/ deleted nodes; information loss?
+            return None 
     else:
-        return getElementText(usernames[0])
+        return lookupOrAdd(getElementText(usernames[0]))
 
 def getRevisionText(revision):
     text_e = revision.getElementsByTagName('text')
@@ -172,14 +200,6 @@ def getPreviousRevision(revision):
             return sibs[i -1]
     return None
 
-def getRegEditorOnly(revision):
-    revision = revision[1]
-    usernames = revision.getElementsByTagName('username')
-    if len(usernames) == 0:
-        return None 
-    else:
-        return getElementText(usernames[0])
-
 def diffTexts(a, b):
 
     ed_counter = 0
@@ -200,17 +220,17 @@ def diffTexts(a, b):
                 ed_sizes.append(i2 - i1)
     return (ed_counter, ed_sizes)
 
-def editorList(revlist, getter = getRevEditor):
+def editorList(revlist, registered_only=False):
     edlist = []
     for rev in revlist:
-        editor = getter(rev)
+        editor = getRevEditor(rev, registered_only)
         if editor not in edlist: edlist.append(editor)
     return sorted(edlist)
 
 def countedEditorList(revlist):
     edlist = {}
     for rev in revlist:
-        editor = getRegEditorOnly(rev)
+        editor = getRevEditor(rev, True)
         if editor == None: continue
         if editor not in edlist: edlist[editor] = 1
         else: edlist[editor] += 1
@@ -254,7 +274,7 @@ def summaryCountsByDate(event_index):
                     total_proposals[pagename] = date
                 elif not non_content_re.match(pagename): 
                     total_content_pages[pagename] = date
-            for editor in editorList(revlist, getRegEditorOnly):
+            for editor in editorList(revlist, True):
                 if editor not in registered_users:
                     registered_users[editor] = date
                     new_reg_users += 1
@@ -265,7 +285,7 @@ def summaryCountsByDate(event_index):
                 proposals_edited += 1
                 proposal_edits  += len(revlist)
                 if new_flag: new_proposals_today += 1
-                proposal_registered_editors += len(editorList(revlist, getRegEditorOnly))
+                proposal_registered_editors += len(editorList(revlist, True))
                 editors = editorList(revlist)
                 proposal_editors += len(editors)
                 if None in editors: proposal_editors -= 1
@@ -282,16 +302,22 @@ def summaryCountsByDate(event_index):
         ed_per_pg_tot = sum(edits_by_pages)    
         ed_per_pg_avg = float(len(event_index[date].keys()))/ed_per_pg_tot if ed_per_pg_tot else 0
         eds5_today = [x[0] for x in authors_today.items() if x[1] >= 5]
+        eds5_today_str = '"'
+        for name in eds5_today:
+            eds5_today_str += name +','
+        eds5_today_str += '"'
 
-        output.extend( (len(total_content_pages.keys()), len(total_pages.keys()), len(registered_users.keys()), total_edits, new_reg_users) )
-        output.extend( (len(total_proposals.keys()), proposals_edited, new_proposals_today, proposal_edits, proposal_registered_editors, proposal_editors) )  
-        output.extend( (ed_per_pg_avg, len(new_pages_today), len(eds5_today), eds5_today) )
+        output.extend( (len(total_content_pages.keys()), len(total_pages.keys()), len(registered_users.keys()), 
+                       total_edits, new_reg_users, len(total_proposals.keys()), proposals_edited, 
+                       new_proposals_today, proposal_edits, proposal_registered_editors, proposal_editors, 
+                       ed_per_pg_avg, len(new_pages_today), len(eds5_today))  )
+        output.append( eds5_today_str )
         yield output
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
     
-    sys.stderr.write(str(datetime.now()) + " Starting editor-by-editor processing")
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Starting editor-by-editor processing")
     debug_revs2go = sum([len(v) for v in editor_index.values()])
     debug_counter = 0
     debug_2pct = debug_revs2go/50
@@ -305,10 +331,11 @@ def editorCounts(editor_index):
 
         for dt, rev in revlist:
 
-            if debug_counter % debug_2pct == 0: 
-                sys.stderr.write(".")
-                sys.stderr.flush()
-            debug_counter += 1
+            if VERBOSE:
+                if debug_counter % debug_2pct == 0: 
+                    sys.stderr.write(".")
+                    sys.stderr.flush()
+                debug_counter += 1
 
             prev = getPreviousRevision(rev)
             if prev == None: 
@@ -325,7 +352,7 @@ def editorCounts(editor_index):
 
         output.extend( (len(revlist), original_authorship, avg_edit_count_per_revision, avg_edit_size) )
         yield output
-    sys.stderr.write("\n" + str(datetime.now()) + " done.\n")
+    if VERBOSE: sys.stderr.write("\n" + str(datetime.now()) + " ...done.\n")
 
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
@@ -352,9 +379,10 @@ def getSummaryCSVHeaders():
     """
 
     output = []
-    output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Registered Users', 'Total Edits', 'New Registered Users', 'Total Proposals') )
-    output.extend( ('Proposals Edited', 'New Proposals', 'Proposal Edits', 'Proposal Reg Editors', 'Proposal Editors') )  
-    output.extend( ('Edits/Page Today', 'New Pages Today', '# Editors w/5+ Today', 'Editors w/5+ Today') )  
+    output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Registered Users', 'Total Edits', 
+                    'New Registered Users', 'Total Proposals', 'Proposals Edited', 'New Proposals', 
+                    'Proposal Edits', 'Proposal Reg Editors', 'Proposal Editors', 'Edits/Page Today', 
+                    'New Pages Today', '# Editors w/5+ Today', 'Editors w/5+ Today') )  
     return output
 
 def getEditorCSVHeaders():
@@ -381,25 +409,86 @@ def statsEditors(dumpDOM):
 
 def csvOut(iterable, file_obj=sys.stdout, header=None):
     import csv
-    csv.register_dialect("ooffice_like", delimiter=',', skipinitialspace=True, lineterminator="\n", quoting=csv.QUOTE_NONNUMERIC)
+    csv.register_dialect("ooffice_like", delimiter=',', skipinitialspace=True, 
+                         lineterminator="\n", quoting=csv.QUOTE_NONNUMERIC)
     if header:
         csv.writer(file_obj, dialect="ooffice_like").writerow(header)
     for collection in iterable:
         csv.writer(file_obj, dialect="ooffice_like").writerow(collection)
 
+def read_yaml(filename):
+    global YAML_DATA
+    global YAML_INDEX
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Reading YAML data into memory...\n")
+    if os.access(filename, os.F_OK) and os.access(filename, os.R_OK):
+        f = open(filename, 'rb')
+        YAML_DATA = yaml.load(f)
+    else:
+        YAML_DATA = None
+    if YAML_DATA == None: 
+        if VERBOSE: sys.stderr.write("WARNING: no data found in YAML; starting fresh...\n")
+        YAML_DATA = {}
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " done.  Building index...\n")
+    YAML_INDEX = wikiname_yaml()
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " done.\n")
+    return YAML_DATA, YAML_INDEX
+
+def close_yaml(filename):
+    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Serializing " + str(len(YAML_DATA.keys())) + " YAML records to disk...\n")
+    if os.access(filename, os.F_OK) and os.access(filename, os.W_OK):
+        os.rename(filename, filename+'.wikistats.bak')
+    if os.access(os.getcwd(), os.W_OK):
+        f = open(filename, 'wb')
+        yaml.dump(YAML_DATA, f, indent=4)
+    else:
+        sys.stderr.write("ERROR: Couldn't write YAML "+filename+"; bad OS access.  Incorrect permissions?\n")
+        return
+
+def wikiname_yaml():
+    global YAML_DATA
+    global YAML_INDEX
+    if YAML_INDEX == None:
+        YAML_INDEX = {}
+    if YAML_DATA == None: return
+    for id in YAML_DATA:
+        names = YAML_DATA[id]['wiki']
+        for name in names:
+            YAML_INDEX[name] = id
+    return YAML_INDEX
+
+def addNameTo_yaml(name):      # NOT THREAD SAFE
+    if name in YAML_INDEX: return
+    try:
+        highest = max(YAML_DATA.keys())
+    except ValueError:
+        highest = 0
+    new = highest + 1
+    try:
+        YAML_DATA[new] = {'real name': '', 'email': [''], 'irc': [''], 'wiki': [ unicode(name, "utf8") ]}
+    except UnicodeDecodeError, msg:
+        print name
+        raise 
+    YAML_INDEX[name] = new
+
 
 # Test Harness
 if __name__ == "__main__":
+
     import optparse    
-    usage = "usage: %prog"
+    usage = "usage: %prog [usernames.yaml]"
     parser = optparse.OptionParser(usage = usage)
     parser.add_option('-s', '--summary', dest="summary_stats", action="store_true", default=False,
                          help="Whole-archive summary stats, including proposal stats")
     parser.add_option('-e', '--editors', dest="editor_stats", action="store_true", default=False,
                          help="Stats broken out on a per-user basis")
+    parser.add_option('-v', '--verbose', dest="verbose_flag", action="store_true", default=False,
+                         help="Produce logging output on stderr")
     
     opts, args = parser.parse_args()
+    yaml_file = args[0] or "usernames.yaml"
+    VERBOSE = opts.verbose_flag
 
+    read_yaml(yaml_file)
     dumpDOM = getDOM()
 
     if opts.summary_stats:
@@ -407,4 +496,5 @@ if __name__ == "__main__":
     if opts.editor_stats:
         statsEditors(dumpDOM)
 
+    close_yaml(yaml_file)
     dumpDOM.unlink()
