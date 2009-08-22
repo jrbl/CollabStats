@@ -25,6 +25,7 @@ import sys
 from xml.dom import minidom as md
 from datetime import datetime
 import re
+import difflib
 
 
 #### 
@@ -64,21 +65,33 @@ def pageRevisions(page):
     for rev in page.getElementsByTagName('revision'):
         yield rev
 
-def eventStream(wikiDOM):
-    """Returns a list of (datetime, DOM node) pairs suitable for building mappings"""
-    times = wikiDOM.getElementsByTagName('timestamp')
-    for t in times:
-        #dt = datetime.strptime(t.firstChild.nodeValue, "%Y-%m-%dT%H:%M:%SZ")
-        dt = datetime.strptime(t.firstChild.nodeValue[:10], "%Y-%m-%d")
-        rev = t.parentNode
-        pg = t.parentNode.parentNode
-        yield (dt, t, rev, pg)
-
 def getElementText(element):
     return element.firstChild.nodeValue.encode("utf8")
 
 def getPageTitleText(page):
     return getElementText(page.getElementsByTagName('title')[0])
+
+def dateTimeStr(dt_string):
+    return datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%sZ")
+
+def dateStrOnly(dt_string):
+    return datetime.strptime(dt_string[:10], "%Y-%m-%d")
+
+def eventStream(wikiDOM):
+    times = wikiDOM.getElementsByTagName('timestamp')
+    for t in times:
+        dt = dateStrOnly(t.firstChild.nodeValue)
+        rev = t.parentNode
+        pg = t.parentNode.parentNode
+        yield (dt, t, rev, pg)
+
+def editorStream(wikiDOM):
+    editors = wikiDOM.getElementsByTagName('username')
+    for e in editors:
+        ed = getElementText(e)
+        rev = e.parentNode.parentNode
+        dt = dateStrOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
+        yield (ed, rev, dt)
 
 def buildEventIndex(event_stream):
     event_index = {}
@@ -91,6 +104,16 @@ def buildEventIndex(event_stream):
         else: 
             event_index[dt][pg].append( (ts, rev) )
     return event_index
+
+def buildEditorIndex(editor_stream):
+    editor_index = {}
+    for editorTuple in editor_stream:
+        ed, rev, dt = editorTuple
+        if ed not in editor_index:
+            editor_index[ed] = [ (dt, rev) ]
+        else: 
+            editor_index[ed].append( (dt, rev) )
+    return editor_index
 
 def getRevID(revision):
     return getElementText(revision.getElementsByTagName('id')[0])
@@ -128,6 +151,27 @@ def getRevEditor(revision):
     else:
         return getElementText(usernames[0])
 
+def getRevisionText(revision):
+    text_e = revision.getElementsByTagName('text')
+    try:
+        return getElementText(text_e[0])
+    except AttributeError:
+        return ""
+
+def getPreviousRevision(revision):
+    my_id = getRevID(revision)
+    sibs = revision.parentNode.getElementsByTagName('revision')
+    def cmp(x, y):
+        if getRevID(x) < getRevID(y): return -1
+        elif getRevID(x) > getRevID(y): return 1
+        else: return 0
+    sibs = sorted(sibs, cmp)
+    for i in range(len(sibs)):
+        if getRevID(sibs[i]) == my_id:
+            if i == 0: return None
+            return sibs[i -1]
+    return None
+
 def getRegEditorOnly(revision):
     revision = revision[1]
     usernames = revision.getElementsByTagName('username')
@@ -135,6 +179,26 @@ def getRegEditorOnly(revision):
         return None 
     else:
         return getElementText(usernames[0])
+
+def diffTexts(a, b):
+
+    ed_counter = 0
+    ed_sizes   = []
+    sm = difflib.SequenceMatcher(None, a, b)
+    for code, i1, i2, j1, j2 in sm.get_opcodes():
+        if code == 'equal':
+            continue
+        ed_counter += 1
+        if code == 'delete':
+            ed_sizes.append(i2 - i1)
+        elif code == 'insert':
+            ed_sizes.append(j2 - j1)
+        elif code == 'replace':
+            if (j2 - j1) >= (i2 - i1):
+                ed_sizes.append(j2 - j1)
+            elif (j2 - j2) < (i2 - i1):
+                ed_sizes.append(i2 - i1)
+    return (ed_counter, ed_sizes)
 
 def editorList(revlist, getter = getRevEditor):
     edlist = []
@@ -224,6 +288,45 @@ def summaryCountsByDate(event_index):
         output.extend( (ed_per_pg_avg, len(new_pages_today), len(eds5_today), eds5_today) )
         yield output
 
+def editorCounts(editor_index):
+    # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
+    
+    sys.stderr.write(str(datetime.now()) + " Starting editor-by-editor processing")
+    debug_revs2go = sum([len(v) for v in editor_index.values()])
+    debug_counter = 0
+    debug_2pct = debug_revs2go/50
+    for ed in editor_index:
+        output = [ ed ]
+        revlist = editor_index[ed]
+
+        original_authorship = 0
+        edit_counts = [ ]
+        edit_sizes = 0
+
+        for dt, rev in revlist:
+
+            if debug_counter % debug_2pct == 0: 
+                sys.stderr.write(".")
+                sys.stderr.flush()
+            debug_counter += 1
+
+            prev = getPreviousRevision(rev)
+            if prev == None: 
+                prev_text = ''
+                original_authorship += 1
+            else: prev_text = getRevisionText(prev)
+            cur_text = getRevisionText(rev)
+            editCount, editSizes = diffTexts(prev_text, cur_text)
+            edit_counts.append(editCount)
+            edit_sizes += sum(editSizes)
+
+        avg_edit_count_per_revision = float(sum(edit_counts))/len(edit_counts)
+        avg_edit_size = float(edit_sizes)/len(edit_counts) 
+
+        output.extend( (len(revlist), original_authorship, avg_edit_count_per_revision, avg_edit_size) )
+        yield output
+    sys.stderr.write("\n" + str(datetime.now()) + " done.\n")
+
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
 
@@ -254,9 +357,27 @@ def getSummaryCSVHeaders():
     output.extend( ('Edits/Page Today', 'New Pages Today', '# Editors w/5+ Today', 'Editors w/5+ Today') )  
     return output
 
+def getEditorCSVHeaders():
+    """return the names for the header line for a csv file.  Defined below.
+
+    Editor: Registered nick of the editor
+    Edits: Number of edits since dawn of time
+    Authorship: Number of first revisions since dawn of time
+    Avg Changes/Rev: Average number of changes made to the text per revision
+    Avg Change Size: Average size of changes made to texts, in characters
+    """
+
+    output = []
+    output.extend( ('Editor', 'Edits', 'Authorship', 'Avg Changes/Rev', 'Avg Change Size') )
+    return output
+
 def statsSummary(dumpDOM):
     event_index = buildEventIndex(eventStream(dumpDOM))
     csvOut(summaryCountsByDate(event_index), header=getSummaryCSVHeaders())
+
+def statsEditors(dumpDOM):
+    editor_index = buildEditorIndex(editorStream(dumpDOM))
+    csvOut(editorCounts(editor_index), header=getEditorCSVHeaders() ) 
 
 def csvOut(iterable, file_obj=sys.stdout, header=None):
     import csv
@@ -274,6 +395,8 @@ if __name__ == "__main__":
     parser = optparse.OptionParser(usage = usage)
     parser.add_option('-s', '--summary', dest="summary_stats", action="store_true", default=False,
                          help="Whole-archive summary stats, including proposal stats")
+    parser.add_option('-e', '--editors', dest="editor_stats", action="store_true", default=False,
+                         help="Stats broken out on a per-user basis")
     
     opts, args = parser.parse_args()
 
@@ -281,5 +404,7 @@ if __name__ == "__main__":
 
     if opts.summary_stats:
         statsSummary(dumpDOM)
+    if opts.editor_stats:
+        statsEditors(dumpDOM)
 
     dumpDOM.unlink()

@@ -9,3 +9,5 @@ user_merges    - run to identify user information merge possibilities -
                  entities with different unique identifiers but similar 
                  irc nicks might be the same individual.  Requires that 
                  ircstats has been run at least once.
+wikistats      - Tries to answer interesting questions about wiki usage
+                 Works with MediaWiki full dumps.
