@@ -45,7 +45,7 @@ if __name__ == "__main__":
     if len(args) != 1: parser.error("Exactly one YAML file must be specified.")
 
     file = open(args[0], 'r')
-    data = yaml.safe_load(file)
+    data = yaml.load(file)
 
     for key in data.keys():
         # FIXME: should test for key to be valid int or uuid4

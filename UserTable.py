@@ -54,7 +54,7 @@ class UserTable(object):
         self.last_id = 0
 
         self.__userObjectTable = DictDB.dbopen(user_objects_db, flag='c', format='pickle')
-        self.__yaml_data = yaml.safe_load( open( mapping_yaml, 'r' ))
+        self.__yaml_data = yaml.load( open( mapping_yaml, 'r' ))
 
         # Set last_id higher than anything we've seen (necessary with sequential uids, not uuids)
         # XXX: oh my gods, this is crazy.  But at least it's user-editable, I guess?
@@ -66,6 +66,7 @@ class UserTable(object):
         # Ensure all the tables maintain synchrony on data read
         for id in self.__userObjectTable.keys():
             for nick in self.__userObjectTable[id].nicks:
+                if nick == '': continue
                 self.__commonNames[nick] = id
         for id in self.__yaml_data.keys():
             real_name = self.__yaml_data[id]['real name']
@@ -75,9 +76,11 @@ class UserTable(object):
             if id not in self.__userObjectTable:
                 user_object = UserStats( nicks[0], -1, id ) # XXX: should timestamp properly
                 for nick in nicks: 
+                    if nick == '': continue
                     user_object.addNick(nick)
                 self.__userObjectTable[id] = user_object
             for nick in nicks:
+                if nick == '': continue
                 self.__commonNames[nick] = id
                 if nick not in self.__userObjectTable[id].nicks:
                     self.__userObjectTable[id].nicks.append(nick)
