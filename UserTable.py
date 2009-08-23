@@ -189,7 +189,10 @@ class UserTable(object):
         if id in self.__yaml_data:
             record = self.__yaml_data[id]
             name = record['real name']
+            wikis = record['wiki']
             if name != '': return name
+            elif len(wikis) >= 1 and wikis[0] != '':
+                return wikis[0]
         return self.__userObjectTable[id].nicks[0]
 
             
