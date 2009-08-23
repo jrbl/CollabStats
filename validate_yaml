@@ -19,6 +19,8 @@
 """
 
 # Imports
+import os, sys
+
 import yaml
 
 
@@ -30,14 +32,46 @@ expected_format = """uid-string:
 
 """
 
+def validateText(thing):
+    """This had better be a string or unicode object."""
+    try:
+        assert isinstance(thing, str)
+    except AssertionError:
+        assert isinstance(thing, unicode)
+
+def validateListOfText(thing):
+    """Validate the contents of a list of strings, filter unnecessary null strings, return"""
+    assert isinstance(thing, list)
+    for item in thing:
+        validateText(item)
+    if len(thing) > 1:
+        thing = filter(None, list(set(thing)))
+    return thing
+
+def writeYAML(data, filename):
+    if os.access(filename, os.F_OK) and os.access(filename, os.W_OK):
+        os.rename(filename, filename+'.validator.bak')
+    if os.access(os.getcwd(), os.W_OK):
+        f = open(filename, 'wb')
+        yaml.dump(data, f, indent=4)
+    else:
+        sys.stderr.write("ERROR: Couldn't write YAML "+filename+"; bad OS access.  Incorrect permissions?\n")
+        return
+
 # Test Harness
 if __name__ == "__main__":
     import optparse    
     usage = "usage: %prog [file.yaml]"
     parser = optparse.OptionParser(usage = usage)
+    parser.add_option('-w', '--write', dest="write_out", action="store_true", default=True,
+                      help="Clean up the file on disk after validation (default).")
+    parser.add_option('-W', '--no-write', dest="write_out", action="store_false", default=True,
+                      help="Don't modify the file on disk - simply validate its contents.")
     parser.add_option('-f', '--format', dest="show_format", action="store_true", default=False,
                       help="Display the expected YAML file format to the screen.")
-    
+    parser.add_option('-o', '--outfile', dest="outfile", action="store", metavar="FILE", 
+                      help="When writing cleaned up YAML, file to which to write")
+
     options, args = parser.parse_args()
     if options.show_format:
         print expected_format
@@ -46,18 +80,33 @@ if __name__ == "__main__":
 
     file = open(args[0], 'r')
     data = yaml.load(file)
+    file.close()
 
     for key in data.keys():
-        # FIXME: should test for key to be valid int or uuid4
+        assert isinstance(key, int)
         record = data[key]
+
         name = record['real name']
-        # FIXME: should test if name is a string
+        validateText(name)
+
         email = record['email']
-        # FIXME: should test if email is a list of strings
+        email = validateListOfText(email)
+
         irc = record['irc']
-        # FIXME: should test if irc is a list of strings
+        irc = validateListOfText(irc)
+        data[key]['irc'] = irc
+
         wiki = record['wiki']
-        # FIXME: should test if wiki is a list of strings
+        wiki = validateListOfText(wiki)
+        data[key]['wiki'] = wiki
 
     # If we haven't thrown an exception by now, we're fine.
-    print "OK"
+    sys.stdout.write("Everything checks out OK.\n")
+
+    # Since we did some filtering, serialize back to disk
+    if options.write_out:
+        ofile = args[0]
+        if options.outfile != None:
+            ofile = options.outfile
+        writeYAML(data, ofile)
+
