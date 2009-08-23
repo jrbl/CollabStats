@@ -24,13 +24,16 @@ import os, sys
 import yaml
 
 
-expected_format = """uid-string:
-   'real name': some, text
-   'email': [ some, text ]
-   'irc': [ some, text ]
-   'wiki': [ some, text ]
+EXPECTED_FORMAT_EN = """
+id string:
+   'real name': some text
+   'email': [ "some text", ... ]
+   'irc': [ "some_text", ... ]
+   'wiki': [ "some text", ... ]"""
+HELP_USAGE_EN = """usage: %prog <opts> [file.yaml]
 
-"""
+Default behaviour is to read in the yaml file, sanity-check its contents,
+and write out a version with record-internal redundancies removed."""
 
 def validateText(thing):
     """This had better be a string or unicode object."""
@@ -61,7 +64,7 @@ def writeYAML(data, filename):
 # Test Harness
 if __name__ == "__main__":
     import optparse    
-    usage = "usage: %prog [file.yaml]"
+    usage = HELP_USAGE_EN
     parser = optparse.OptionParser(usage = usage)
     parser.add_option('-w', '--write', dest="write_out", action="store_true", default=True,
                       help="Clean up the file on disk after validation (default).")
@@ -70,38 +73,52 @@ if __name__ == "__main__":
     parser.add_option('-f', '--format', dest="show_format", action="store_true", default=False,
                       help="Display the expected YAML file format to the screen.")
     parser.add_option('-o', '--outfile', dest="outfile", action="store", metavar="FILE", 
-                      help="When writing cleaned up YAML, file to which to write")
+                      help="When writing cleaned YAML, filename to which we should write")
 
     options, args = parser.parse_args()
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
+
     if options.show_format:
-        print expected_format
+        print EXPECTED_FORMAT_EN
+        sys.exit()
 
-    if len(args) != 1: parser.error("Exactly one YAML file must be specified.")
+    if len(args) != 1: parser.error("Exactly one YAML input file must be specified.")
+    else:
+        file = open(args[0], 'r')
+        data = yaml.load(file)
+        file.close()
 
-    file = open(args[0], 'r')
-    data = yaml.load(file)
-    file.close()
+        for key in data.keys():
+            assert isinstance(key, int)
+            record = data[key]
 
-    for key in data.keys():
-        assert isinstance(key, int)
-        record = data[key]
+            name = record['real name']
+            validateText(name)
 
-        name = record['real name']
-        validateText(name)
+            email = record['email']
+            email = validateListOfText(email)
 
-        email = record['email']
-        email = validateListOfText(email)
+            irc = record['irc']
+            irc = validateListOfText(irc)
+            data[key]['irc'] = irc
 
-        irc = record['irc']
-        irc = validateListOfText(irc)
-        data[key]['irc'] = irc
+            # XXX: Testing unicode re-writing here; it doesn't seem to behave correctly
+            #wiki = record['wiki']
+            assert isinstance(data[key]['wiki'], list)
+            if len(data[key]['wiki']) > 1:
+                data[key]['wiki'] = filter(None, list(set(data[key]['wiki'])))
+            for i in range(len(data[key]['wiki'])):
+                try:
+                    assert isinstance(data[key]['wiki'][i], unicode)
+                except AssertionError:
+                    data[key]['wiki'][i] = unicode(data[key]['wiki'][i], "utf-8")
+            #wiki = validateListOfUnicode(wiki)
+            #data[key]['wiki'] = wiki
 
-        wiki = record['wiki']
-        wiki = validateListOfText(wiki)
-        data[key]['wiki'] = wiki
-
-    # If we haven't thrown an exception by now, we're fine.
-    sys.stdout.write("Everything checks out OK.\n")
+        # If we haven't thrown an exception by now, we're fine.
+        sys.stdout.write("Everything checks out OK.\n")
 
     # Since we did some filtering, serialize back to disk
     if options.write_out:

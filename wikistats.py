@@ -40,7 +40,7 @@ VERBOSE    = False
 YAML_DATA  = None
 YAML_INDEX = None
 
-# Classes
+HELP_USAGE_EN = """usage: %prog [usernames.yaml]"""
 
 
 # Utility Functions
@@ -475,7 +475,7 @@ def addNameTo_yaml(name):      # NOT THREAD SAFE
 if __name__ == "__main__":
 
     import optparse    
-    usage = "usage: %prog [usernames.yaml]"
+    usage = HELP_USAGE_EN
     parser = optparse.OptionParser(usage = usage)
     parser.add_option('-s', '--summary', dest="summary_stats", action="store_true", default=False,
                          help="Whole-archive summary stats, including proposal stats")
@@ -485,7 +485,13 @@ if __name__ == "__main__":
                          help="Produce logging output on stderr")
     
     opts, args = parser.parse_args()
-    yaml_file = args[0] or "usernames.yaml"
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
+
+    yaml_file = "usernames.yaml"
+    if len(args) == >= 1:
+        yaml_file = args[0]
     VERBOSE = opts.verbose_flag
 
     read_yaml(yaml_file)

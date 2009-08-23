@@ -186,14 +186,21 @@ class UserTable(object):
 
     def idToName(self, id):
         """If id is in our database, give a real name if we have one, or else nicks[0]"""
+        retVal   = self.__userObjectTable[id].nicks[0]
         if id in self.__yaml_data:
-            record = self.__yaml_data[id]
-            name = record['real name']
-            wikis = record['wiki']
-            if name != '': return name
+            record   = self.__yaml_data[id]
+            realname = record['real name']
+            wikis    = record['wiki']
+            if realname != '': 
+                retVal = realname
             elif len(wikis) >= 1 and wikis[0] != '':
-                return wikis[0]
-        return self.__userObjectTable[id].nicks[0]
+                retVal = wikis[0]
+        if isinstance(retVal, str):
+            return unicode(retVal, "utf-8")
+        elif isinstance(retVal, unicode):
+            return retVal
+        else:
+            return unicode(retVal, "utf-8")
 
             
 

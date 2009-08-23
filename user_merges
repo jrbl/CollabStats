@@ -21,8 +21,14 @@ FIXME: should also provide merge functionality
 """
 
 # Imports
+import os, sys
 import yaml
 from UserTable import UserTable
+
+
+HELP_USAGE_EN = """usage: %prog [usernames.yaml] [irc_users.pickle]
+
+Interactively scans user data files, suggesting possible merges and asking for permission."""
 
 
 def match_report(userTable, n1, n1_mergelist, verbose=False):
@@ -170,21 +176,22 @@ def possible_merges(c_names, userTable):
 
 if __name__ == "__main__":
     import optparse    
-    usage = "usage: %prog [usernames.yaml] [irc_users.pickle]\n"
-    usage += "\nInteractively scans user data files, suggesting possible mergers and asking for permission."
-    parser = optparse.OptionParser(usage = usage)
+    parser = optparse.OptionParser(usage = HELP_USAGE_EN)
     parser.add_option('-n', "--no-scan", dest="scan", action="store_false", default=True, 
                       help="Disable interactive data scan; useful along with -f.")
     parser.add_option('-w', "--wiki-scan", dest="wiki", action="store_true", default=False, 
-                      help="Interactive scan using wiki names; disables standard scan.")
+                      help="Interactive scan using wiki names; disables standard (IRC) scan.")
     parser.add_option('-i', "--id-merge", action="store", nargs=2, type="int",
                       dest="merge_ids", metavar="id1 id2", 
-                      help="Force the merger of data for id1 and id2, regardless of scan results.  Use with care.")
+                      help="Force merge of data for id1 and id2, regardless of scan results.  Use with care.")
     parser.add_option('-f', "--force-merge", action="store", nargs=2, 
                       dest="merge_nicks", metavar="nick1 nick2", 
-                      help="Force the merger of data for nick1 and nick2, regardless of scan results.  Use with care.")
+                      help="Force merge of data for nick1 and nick2, regardless of scan results.  Use with care.")
     
     options, args = parser.parse_args()
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
 
     user_table_file = ''
     user_data_file = ''

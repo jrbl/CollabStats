@@ -18,6 +18,10 @@
 """XML parser for Collquy XML-formatted IRC transcripts.
 
 Currently just a pile of functions.  Safe for "from InputColloquyIRC import *".
+
+Cf. http://forge.blueoxen.net/wiki/IRC_Analytics
+Cf. RFC 2812
+Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 """
 
 from xml.dom import NotSupportedErr as NotSupportedError

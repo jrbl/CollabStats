@@ -20,9 +20,9 @@
 
 Cf. http://forge.blueoxen.net/wiki/IRC_Analytics
 Cf. RFC 2812
-Cf. http://colloquy.info/project/wiki/Development/Styles/LogFileFormat
 """
 
+import os, sys
 import xml.dom.minidom as md
 from datetime import datetime
 
@@ -32,8 +32,8 @@ from InputColloquyIRC import *
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 DEBUG     = False
-VERSION   = "0.2"
 
+HELP_USAGE_EN = """usage: %prog [options] [file1.xml] [file2.xml] [...]"""
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 
@@ -70,7 +70,7 @@ def dailyStatsForUser(userTable, id, eco, daylist):
     user_object = userTable[id]
     t_msgs, t_acts = reduce( (lambda x,y: (x[0] + y[0], x[1] + y[1])) , [eco[day] for day in daylist])
 
-    retVal = [ name ]
+    retVal = [ id, name ]
     retVal.extend( summary( count_messages(user_object), t_msgs, count_actions(user_object), t_acts ) )
     for day in daylist:
         t_msgs, t_acts = eco[day]
@@ -121,25 +121,6 @@ def getDayList(userTable):
                 daylist.append(d)
     return sorted(daylist)
 
-def setup_optparse():
-    import optparse
-    usage = "usage: %prog [options] file1.xml [file2.xml] [...]"
-    parser = optparse.OptionParser(usage=usage, version=VERSION)
-    parser.add_option('-c', "--csv",      dest="csv",      action="store_true", default=False, 
-                      help="Write a CSV-formatted file of all statistics to stdout")
-    parser.add_option('-t', "--totals",   dest="totals",   action="store_true", default=False, 
-                      help="Output summary totals of messages and actions")
-    parser.add_option('-m', "--messages", dest="messages", action="store_true", default=False, 
-                      help="Output message counts per username")
-    parser.add_option('-a', "--actions",  dest="actions",  action="store_true", default=False, 
-                      help="Output action counts per username")
-    parser.add_option('-l', "--lurkers",  dest="lurkers",  action="store_true", default=False, 
-                      help="Output list of lurkers - users who don't say anything")
-    parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
-                      help="Enable debug mode.  Really, it's not that great.")
-    options, args = parser.parse_args()
-    return parser
-
 def getReportHeader(typeword, daylist, short = " cnt"):
     header = typeword + " by user:\n"
     header += "\t%4s  %4s  %20s " % ("All", "All", " ")
@@ -166,7 +147,7 @@ def userStatsByLine(offset, all_stats, table):
     """Return iterator over paired stats in all_stats starting at offset; fix names."""
     for line in all_stats:
         #name = table.idToName(table[line[0]].id)
-        name = line[0]
+        name = line[1]
         if line[offset] == 0: continue
         line = line[offset:]
         out = '\t %3d  %.2f  %20s ' % (line[0], line[1], name)
@@ -174,6 +155,30 @@ def userStatsByLine(offset, all_stats, table):
             for i in range(4, len(line), 4):
                 out += "  %10d %10.2f" % (line[i], line[i+1])
         yield out
+
+def setup_optparse():
+    import optparse
+    usage = HELP_USAGE_EN
+    parser = optparse.OptionParser(usage=usage)
+    parser.add_option('-c', "--csv",      dest="csv",      action="store_true", default=True, 
+                      help="Write a CSV-formatted file of all statistics to stdout (the default)")
+    parser.add_option('-t', "--totals",   dest="totals",   action="store_true", default=False, 
+                      help="Output summary totals of messages and actions")
+    parser.add_option('-m', "--messages", dest="messages", action="store_true", default=False, 
+                      help="Output message counts per username")
+    parser.add_option('-a', "--actions",  dest="actions",  action="store_true", default=False, 
+                      help="Output action counts per username")
+    parser.add_option('-l', "--lurkers",  dest="lurkers",  action="store_true", default=False, 
+                      help="Output list of lurkers - users who don't say anything")
+    parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
+                      help="Enable debug mode")
+    options, args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
+
+    return parser
 
 
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
@@ -202,6 +207,7 @@ if __name__ == "__main__":
         everything_counted_once[day] = count_everything(userTable, day)
 
     if options.totals:
+        options.csv = False
         print "Total messages:", msgcount + actcount
         print "Messages:", msgcount
         print "Actions:", actcount
@@ -214,16 +220,19 @@ if __name__ == "__main__":
         allTheStats = [dailyStatsForUser(userTable, id, everything_counted_once, daylist) for id in userTable]
 
         if options.messages:
+            options.csv = False
             print getReportHeader("Messages", daylist)
-            for line in userStatsByLine(1, allTheStats, userTable):
+            for line in userStatsByLine(2, allTheStats, userTable):
                 print line
 
         if options.actions:
+            options.csv = False
             print getReportHeader("Actions", daylist)
-            for line in userStatsByLine(3, allTheStats, userTable):
+            for line in userStatsByLine(4, allTheStats, userTable):
                 print line
 
         if options.lurkers:
+            options.csv = False
             # FIXME: it thinks people who weren't present on a particular day are lurkers
             header = "Lurkers and Action-only Users:\n"
             header += "%20s  " % "Name"
@@ -235,8 +244,8 @@ if __name__ == "__main__":
                     for t in l:
                         if not t: return False
                     return True
-                name = line[0]
-                line = line[5:]
+                name = line[1]
+                line = line[6:]
                 if allTrue([line[i] > 0 for i in range(0, len(line), 4)]): continue
                 pairs = zip([line[i] for i in range(1, len(line), 4)], [line[i] for i in range(3, len(line), 4)])
                 line = "%20s  " % name
@@ -256,9 +265,13 @@ if __name__ == "__main__":
             header.extend(("NICK1", "NICK2", "NICK3", "NICK4"))
             csv.writer(sys.stdout, dialect="ooffice_like").writerow(header)
             for line in allTheStats:
-                line.insert(0, userTable[line[0]].id)
+                #line.insert(0, userTable[line[0]].id)
                 line.extend( userTable[line[0]].nicks[:4] )
-                csv.writer(sys.stdout, dialect="ooffice_like").writerow(line)
+                try: 
+                    csv.writer(sys.stdout, dialect="ooffice_like").writerow(line)
+                except UnicodeEncodeError, msg:
+                    print line
+                    raise
 
 
     userTable.close()
