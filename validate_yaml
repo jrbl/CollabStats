@@ -21,7 +21,7 @@
 # Imports
 import os, sys
 
-import yaml
+from DictDB import DictDB
 
 
 EXPECTED_FORMAT_EN = """
@@ -37,10 +37,10 @@ and write out a version with record-internal redundancies removed."""
 
 def validateText(thing):
     """This had better be a string or unicode object."""
-    try:
-        assert isinstance(thing, str)
-    except AssertionError:
-        assert isinstance(thing, unicode)
+    assert isinstance(thing, basestring)
+    if isinstance(thing, unicode):
+        return thing.encode("utf-8")
+    else: return thing
 
 def validateListOfText(thing):
     """Validate the contents of a list of strings, filter unnecessary null strings, return"""
@@ -51,15 +51,14 @@ def validateListOfText(thing):
         thing = filter(None, list(set(thing)))
     return thing
 
-def writeYAML(data, filename):
-    if os.access(filename, os.F_OK) and os.access(filename, os.W_OK):
-        os.rename(filename, filename+'.validator.bak')
-    if os.access(os.getcwd(), os.W_OK):
-        f = open(filename, 'wb')
-        yaml.dump(data, f, indent=4)
-    else:
-        sys.stderr.write("ERROR: Couldn't write YAML "+filename+"; bad OS access.  Incorrect permissions?\n")
-        return
+def NEWvalidateListOfText(thing):
+    """Validate the contents of a list of strings, filter unnecessary null strings, return"""
+    assert isinstance(thing, list)
+    if len(thing) > 1:
+        thing = filter(None, list(set(thing)))
+    for i in range(len(thing)):
+        thing[i] = validateText(thing[i])
+    return thing
 
 # Test Harness
 if __name__ == "__main__":
@@ -86,9 +85,8 @@ if __name__ == "__main__":
 
     if len(args) != 1: parser.error("Exactly one YAML input file must be specified.")
     else:
-        file = open(args[0], 'r')
-        data = yaml.load(file)
-        file.close()
+        filename = args[0]
+        data = DictDB(filename, format='yaml')
 
         for key in data.keys():
             assert isinstance(key, int)
@@ -104,18 +102,16 @@ if __name__ == "__main__":
             irc = validateListOfText(irc)
             data[key]['irc'] = irc
 
-            # XXX: Testing unicode re-writing here; it doesn't seem to behave correctly
-            #wiki = record['wiki']
-            assert isinstance(data[key]['wiki'], list)
-            if len(data[key]['wiki']) > 1:
-                data[key]['wiki'] = filter(None, list(set(data[key]['wiki'])))
-            for i in range(len(data[key]['wiki'])):
-                try:
-                    assert isinstance(data[key]['wiki'][i], unicode)
-                except AssertionError:
-                    data[key]['wiki'][i] = unicode(data[key]['wiki'][i], "utf-8")
-            #wiki = validateListOfUnicode(wiki)
-            #data[key]['wiki'] = wiki
+            wiki = record['wiki']
+            wiki = validateListOfText(wiki)
+            data[key]['wiki'] = wiki
+            ## XXX: Testing unicode re-writing here; it doesn't seem to behave correctly
+            #assert isinstance(data[key]['wiki'], list)
+            #if len(data[key]['wiki']) > 1:
+            #    data[key]['wiki'] = filter(None, list(set(data[key]['wiki'])))
+            #for i in range(len(data[key]['wiki'])):
+            #    if isinstance(data[key]['wiki'][i], unicode):
+            #        data[key]['wiki'][i] = data[key]['wiki'][i].encode("utf-8")
 
         # If we haven't thrown an exception by now, we're fine.
         sys.stdout.write("Everything checks out OK.\n")
@@ -125,5 +121,6 @@ if __name__ == "__main__":
         ofile = args[0]
         if options.outfile != None:
             ofile = options.outfile
-        writeYAML(data, ofile)
+        data.sync(ofile)
+        #writeYAML(data, ofile)
 

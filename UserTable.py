@@ -37,24 +37,23 @@ YAML file format:
 
 import os
 
-import DictDB
+from DictDB import DictDB
 from UserStats import UserStats
-
-import yaml
 
 
 class UserTable(object):
     """Maps common names to UUIDs and UUIDs to user objects"""
 
-    def __init__(self, mapping_yaml = 'usernames.yaml', user_objects_db = 'contact_stats.pickle'):
+    def __init__(self, mapping_yaml = 'usernames.yaml', user_objects_db = 'contact_stats.pickle', verbose=False):
         """Builds up the initial name mapping tables from YAML data on disk."""
         self.__userObjectTable = {}              # maps ids -> user objects 
         self.__commonNames = {}                  # maps nicks -> ids
         self.__yaml_data = {}                    # maps ids -> common names, other info
         self.last_id = 0
+        self.verbose = verbose
 
-        self.__userObjectTable = DictDB.dbopen(user_objects_db, flag='c', format='pickle')
-        self.__yaml_data = yaml.load( open( mapping_yaml, 'r' ))
+        self.__userObjectTable = DictDB(user_objects_db, flag='c', format='pickle', verbose=self.verbose)
+        self.__yaml_data = DictDB(mapping_yaml, format='yaml', verbose=self.verbose)
 
         # Set last_id higher than anything we've seen (necessary with sequential uids, not uuids)
         # XXX: oh my gods, this is crazy.  But at least it's user-editable, I guess?
@@ -124,15 +123,29 @@ class UserTable(object):
         sobj = self[secondary]
         sid = sobj.id
 
+        def biggest(a, b):
+            try:
+                if len(a) > len(b): return a
+                else: return b
+            except TypeError:
+                return max(a, b)
+
         # yaml differences
-        if len(self.__yaml_data[sid]['real name']) > len(self.__yaml_data[pid]['real name']):
-            self.__yaml_data[pid]['real name'] = self.__yaml_data[sid]['real name']
-        for feature in ['email', 'irc', 'wiki']:
-            self.__yaml_data[pid][feature].extend( [f for f in self.__yaml_data[sid][feature] if (f != '') and (f not in self.__yaml_data[pid][feature])] )
+        for feature in self.__yaml_data[pid].keys():
+            if isinstance(self.__yaml_data[pid][feature], list):
+                fnames = set(self.__yaml_data[pid][feature])
+                for item in self.__yaml_data[sid][feature]:
+                    fnames.add(item)
+                self.__yaml_data[pid][feature] = list(fnames)
+            else:
+                self.__yaml_data[pid][feature] = biggest(self.__yaml_data[pid][feature], 
+                                                         self.__yaml_data[pid][feature])
 
         # pickle differences
-        pobj.nicks.extend([nick for nick in sobj.nicks if (nick not in pobj.nicks) and (nick != '')])
-        pobj.nicks.sort()
+        candidate = set(filter(None, pobj.nicks))
+        for c in filter(None, sobj.nicks):
+            candidate.add(c)
+        pobj.nicks = sorted(list(candidate))
         pobj.join_times.extend(sobj.join_times)
         pobj.part_times.extend(sobj.part_times)
         for time in sobj.messages:
@@ -149,22 +162,13 @@ class UserTable(object):
         del(self.__userObjectTable[sid])
         del(self.__yaml_data[sid])
 
-    def write_yaml(self, yaml_file = 'usernames.yaml'):
+    def write_yaml(self, yaml_file=None):
         """Write out a yaml file reflecting the current state of the user tables."""
         new_yaml_data = {}
         for key in self.__userObjectTable.keys():
-            if key in self.__yaml_data:
-                new_yaml_data[key] = self.__yaml_data[key]
-            else:
-                new_yaml_data[key] = self.yamlifyUserStats(self.__userObjectTable[key])
-        
-        if os.access(yaml_file, os.F_OK) and os.access(yaml_file, os.W_OK):
-            os.rename(yaml_file, yaml_file+'.usertable.bak')
-        if os.access(os.getcwd(), os.W_OK):
-            f = open(yaml_file, 'wb')
-            yaml.dump(new_yaml_data, f, indent=4)
-        else:
-            print "ERROR: Couldn't write YAML "+yaml_file+"; bad OS access.  Incorrect permissions?"
+            if key not in self.__yaml_data:
+                self.__yaml_data[key] = self.yamlifyUserStats(self.__userObjectTable[key])
+        self.__yaml_data.sync(yaml_file)
 
     def close(self):
         """Write out our data files"""

@@ -117,12 +117,7 @@ def handleEvent(child, userTable, logStartTime):
         user_object = getUserStatsForNick(old, userTable, logStartTime)
         user_object.addNick(new)
     elif event_name == "newNickname":
-        s = "Warning: Transcript Recorder Changed Names\n"
-        s +="Colloquy doesn't record the transcript creator's nick before a rename occurs\n"
-        s +="so you may want to manually add the tag:\n"
-        s +=irc_nick + "\n"
-        s +="to the list of alternate names for whoever created this transcript."
-        print s
+        pass
     else:
         print "Unhandled event "+event_name
 

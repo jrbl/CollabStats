@@ -27,28 +27,32 @@ from datetime import datetime
 import re
 import difflib
 
-import yaml
+from DictDB import DictDB
 
 #### 
 # Proposals were in Proposals/ until a certain date, and then they were all supposed to be moved to 
 # Proposals:, and most of them were.  But b/c of policy decisions and the way Mediawiki does data
 # dumps, we have to cope with the ugly reality
 ### FIXME: we should actually support this, but more discussion about the right thing needs to happen
-dateProposalsChanged = datetime(2009, 8, 3) # XXX: Probably incorrect date; get good one from Eugene
+dateProposalsChanged = datetime(2009, 8, 12) # XXX: Probably incorrect date; get good one from Eugene
 
 VERBOSE    = False
 YAML_DATA  = None
 YAML_INDEX = None
 
-HELP_USAGE_EN = """usage: %prog [usernames.yaml]"""
+HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
 
 # Utility Functions
-def getDOM(file = "strategywiki-20090818-pages-meta-history.xml"):
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Reading XML Dump into memory...\n")
-    dd = md.parse(file)
-    assert dd.documentElement.tagName == u"mediawiki"
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " ...done.\n")
+def getDOM(filename):
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Reading XML Dump into memory...\n")
+    #import codecs
+    #f = codecs.open(filename, 'rb', encoding='utf-8')
+    dd = md.parse(filename)
+    if dd.documentElement.tagName != u'mediawiki':
+        print "%s does not appear to be a MediaWiki dump.  Skipping..." % filename
+        sys.exit()
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " ...done.\n")
     return dd
 
 def wikiPages(wikiDOM):
@@ -109,7 +113,7 @@ def lookupOrAdd(name):
         yam  = YAML_DATA[YAML_INDEX[name]]
         real = yam['real name']
     except KeyError:
-        addNameTo_yaml(name)
+        addNameToYAML(name)
         real = ''
     if real == '': return name
     else:          return real
@@ -246,7 +250,7 @@ def summaryCountsByDate(event_index):
     new_reg_users       = 0
 
     for date in sorted(event_index.keys()):
-        output = [str(date.date())]
+        output = [unicode(date.date())]
         proposal_re    = re.compile("^(Proposal:)|(Proposals/)")
         non_content_re = re.compile("^(User:)|(Talk )|(.+ talk:)")
 
@@ -302,10 +306,12 @@ def summaryCountsByDate(event_index):
         ed_per_pg_tot = sum(edits_by_pages)    
         ed_per_pg_avg = float(len(event_index[date].keys()))/ed_per_pg_tot if ed_per_pg_tot else 0
         eds5_today = [x[0] for x in authors_today.items() if x[1] >= 5]
-        eds5_today_str = '"'
+        #eds5_today_str = u''
+        eds5_today_str = ''
         for name in eds5_today:
-            eds5_today_str += name +','
-        eds5_today_str += '"'
+            #eds5_today_str += name.decode("utf-8") + ','
+            eds5_today_str += name + ','
+        #esds5_today_str = eds5_today_str.encode("utf-8")
 
         output.extend( (len(total_content_pages.keys()), len(total_pages.keys()), len(registered_users.keys()), 
                        total_edits, new_reg_users, len(total_proposals.keys()), proposals_edited, 
@@ -317,7 +323,7 @@ def summaryCountsByDate(event_index):
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
     
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Starting editor-by-editor processing")
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Starting editor-by-editor processing")
     debug_revs2go = sum([len(v) for v in editor_index.values()])
     debug_counter = 0
     debug_2pct = debug_revs2go/50
@@ -352,7 +358,7 @@ def editorCounts(editor_index):
 
         output.extend( (len(revlist), original_authorship, avg_edit_count_per_revision, avg_edit_size) )
         yield output
-    if VERBOSE: sys.stderr.write("\n" + str(datetime.now()) + " ...done.\n")
+    if VERBOSE: sys.stderr.write("\n" + unicode(datetime.now()) + " ...done.\n")
 
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
@@ -419,32 +425,22 @@ def csvOut(iterable, file_obj=sys.stdout, header=None):
 def read_yaml(filename):
     global YAML_DATA
     global YAML_INDEX
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Reading YAML data into memory...\n")
-    if os.access(filename, os.F_OK) and os.access(filename, os.R_OK):
-        f = open(filename, 'rb')
-        YAML_DATA = yaml.load(f)
-    else:
-        YAML_DATA = None
-    if YAML_DATA == None: 
-        if VERBOSE: sys.stderr.write("WARNING: no data found in YAML; starting fresh...\n")
-        YAML_DATA = {}
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " done.  Building index...\n")
-    YAML_INDEX = wikiname_yaml()
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " done.\n")
+    YAML_DATA = DictDB(filename, format='yaml', verbose=VERBOSE)
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Building index...\n")
+    YAML_INDEX = wikinameIndexFromYAML()
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " done.\n")
     return YAML_DATA, YAML_INDEX
 
 def close_yaml(filename):
-    if VERBOSE: sys.stderr.write(str(datetime.now()) + " Serializing " + str(len(YAML_DATA.keys())) + " YAML records to disk...\n")
-    if os.access(filename, os.F_OK) and os.access(filename, os.W_OK):
-        os.rename(filename, filename+'.wikistats.bak')
-    if os.access(os.getcwd(), os.W_OK):
-        f = open(filename, 'wb')
-        yaml.dump(YAML_DATA, f, indent=4)
-    else:
-        sys.stderr.write("ERROR: Couldn't write YAML "+filename+"; bad OS access.  Incorrect permissions?\n")
-        return
+    for key in YAML_DATA.keys():
+        for i in range(len(YAML_DATA[key]['wiki'])):
+            payload = YAML_DATA[key]['wiki'][i]
+            if isinstance(payload, unicode):
+                payload = payload.encode("utf-8")
+            YAML_DATA[key]['wiki'][i] = payload
+    YAML_DATA.sync(filename)
 
-def wikiname_yaml():
+def wikinameIndexFromYAML():
     global YAML_DATA
     global YAML_INDEX
     if YAML_INDEX == None:
@@ -456,7 +452,7 @@ def wikiname_yaml():
             YAML_INDEX[name] = id
     return YAML_INDEX
 
-def addNameTo_yaml(name):      # NOT THREAD SAFE
+def addNameToYAML(name):      # NOT THREAD SAFE
     if name in YAML_INDEX: return
     try:
         highest = max(YAML_DATA.keys())
@@ -483,19 +479,32 @@ if __name__ == "__main__":
                          help="Stats broken out on a per-user basis")
     parser.add_option('-v', '--verbose', dest="verbose_flag", action="store_true", default=False,
                          help="Produce logging output on stderr")
+    parser.add_option('-w', '--wikidump', dest="wikidump", action="store", metavar="FILE",
+                         help="Process Mediawiki dump file FILE")
+    parser.add_option('-y', '--yaml-file', dest="yaml_file", action="store", metavar="FILE",
+                         help="Dereference usernames against YAML file FILE")
     
     opts, args = parser.parse_args()
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
 
+    wikidump = None
     yaml_file = "usernames.yaml"
-    if len(args) == >= 1:
-        yaml_file = args[0]
+    if len(args) >= 1:
+        wikidump = args[0]
+    if len(args) >= 2:
+        yaml_file = args[1]
+    if opts.wikidump:
+        wikidump = opts.wikidump
+    if wikidump == None:
+        parser.error("Please specify Mediawiki dump file to process with the -w FILE flag.")
+    if opts.yaml_file:
+        yaml_file = opts.yaml_file
     VERBOSE = opts.verbose_flag
 
     read_yaml(yaml_file)
-    dumpDOM = getDOM()
+    dumpDOM = getDOM(wikidump)
 
     if opts.summary_stats:
         statsSummary(dumpDOM)

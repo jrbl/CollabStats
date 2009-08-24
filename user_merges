@@ -22,7 +22,7 @@ FIXME: should also provide merge functionality
 
 # Imports
 import os, sys
-import yaml
+
 from UserTable import UserTable
 
 
@@ -33,16 +33,10 @@ Interactively scans user data files, suggesting possible merges and asking for p
 
 def match_report(userTable, n1, n1_mergelist, verbose=False):
     """Returns a nice report suggesting that n1_mergelist be merged to n1."""
-    # FIXME: make verbose do something less obviously stupid
+    # FIXME: make verbose do something.
     s = "The records on the right appear to be similar to the record on the left.\n"
     s += "You may want to consider merging them:\n"
-    if not verbose:
-        s += n1 + ": " + str(n1_mergelist)
-    else:
-        s += yaml.dump(userTable[n1], indent=4)
-        s += "---\n"
-        for n1m in n1_mergelist:
-            s += yaml.dump(userTable[n1m], indent=4)
+    s += n1 + ": " + str(n1_mergelist)
     return s
 
 def id_match_report(userTable, id1, id2):

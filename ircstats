@@ -172,6 +172,8 @@ def setup_optparse():
                       help="Output list of lurkers - users who don't say anything")
     parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
                       help="Enable debug mode")
+    parser.add_option('-v', "--verbose",    dest="verbose", action="store_true", default=False, 
+                      help="Verbose output.  Can be chatty.")
     options, args = parser.parse_args()
 
     if len(sys.argv) == 1:
@@ -184,19 +186,23 @@ def setup_optparse():
 #########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+#########+
 if __name__ == "__main__":
 
+    dirty_data = False
     option_parser = setup_optparse()
     options, args = option_parser.parse_args()
 
     if options.debug: DEBUG = True
 
     # Read in on-disk data stores; set up mapping dictionaries
-    userTable = UserTable.UserTable(mapping_yaml = 'usernames.yaml', user_objects_db = 'irc_users.pickle')
+    userTable = UserTable.UserTable(mapping_yaml = 'usernames.yaml', user_objects_db = 'irc_users.pickle', verbose=options.verbose)
     
     # Read in and process user log file
     for filename in args:
         dom = md.parse(filename)                           # should be in InputCollquyIRC.py?
-        assert dom.documentElement.tagName == u"log"
+        if dom.documentElement.tagName != u"log":
+            print "'%s' does not appear to be a Colloquy IRC transcript file.  Skipping..." % filename
+            continue
         handleLogDOM(dom.documentElement, userTable)
+        dirty_data = True
         dom.unlink()
 
     msgcount, actcount = count_everything(userTable)
@@ -265,13 +271,15 @@ if __name__ == "__main__":
             header.extend(("NICK1", "NICK2", "NICK3", "NICK4"))
             csv.writer(sys.stdout, dialect="ooffice_like").writerow(header)
             for line in allTheStats:
-                #line.insert(0, userTable[line[0]].id)
                 line.extend( userTable[line[0]].nicks[:4] )
                 try: 
                     csv.writer(sys.stdout, dialect="ooffice_like").writerow(line)
                 except UnicodeEncodeError, msg:
-                    print line
-                    raise
+                    for i in range(len(line)):
+                        if isinstance(line[i], unicode):
+                            line[i] = line[i].encode("utf-8")
+                    csv.writer(sys.stdout, dialect="ooffice_like").writerow(line)
 
 
-    userTable.close()
+    if dirty_data: 
+        userTable.close()
