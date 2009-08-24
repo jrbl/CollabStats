@@ -204,7 +204,7 @@ if __name__ == "__main__":
         stats_cache = options.stats_file
     else:
         print "Stats cache file unspecified; defaulting to 'irc_users.pickle'..."
-        mapping_yaml = "ircusers.pickle"
+        stats_cache = "ircusers.pickle"
 
     # Read in on-disk data stores; set up mapping dictionaries
     userTable = UserTable.UserTable(mapping_yaml, stats_cache, verbose=options.verbose)
