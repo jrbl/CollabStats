@@ -172,6 +172,10 @@ def setup_optparse():
                       help="Output list of lurkers - users who don't say anything")
     parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
                       help="Enable debug mode")
+    parser.add_option('-y', '--yaml-file', dest="yaml_file", action="store", metavar="FILE",
+                       help="Dereference usernames against YAML file FILE")
+    parser.add_option('-s', '--stats-cache', dest="stats_file", action="store", metavar="FILE",
+                       help="Cache calculated stats in cachefile FILE")
     parser.add_option('-v', "--verbose",    dest="verbose", action="store_true", default=False, 
                       help="Verbose output.  Can be chatty.")
     options, args = parser.parse_args()
@@ -191,9 +195,19 @@ if __name__ == "__main__":
     options, args = option_parser.parse_args()
 
     if options.debug: DEBUG = True
+    if options.yaml_file:
+        mapping_yaml = options.yaml_file
+    else:
+        print "Usernames mapping YAML file unspecified; defaulting to 'usernames.yaml'..."
+        mapping_yaml = "usernames.yaml"
+    if options.stats_file:
+        stats_cache = options.stats_file
+    else:
+        print "Stats cache file unspecified; defaulting to 'irc_users.pickle'..."
+        mapping_yaml = "ircusers.pickle"
 
     # Read in on-disk data stores; set up mapping dictionaries
-    userTable = UserTable.UserTable(mapping_yaml = 'usernames.yaml', user_objects_db = 'irc_users.pickle', verbose=options.verbose)
+    userTable = UserTable.UserTable(mapping_yaml, stats_cache, verbose=options.verbose)
     
     # Read in and process user log file
     for filename in args:
