@@ -103,7 +103,12 @@ def handleEvent(child, userTable, logStartTime):
     timestamp = child.getAttribute('occurred')
     event_name = child.getAttribute('name')
     timestamp = datetime.strptime(timestamp[:19], "%Y-%m-%d %H:%M:%S")
-    irc_nick = getIrcNickAndValidate(child.getElementsByTagName('who'))
+    whos = child.getElementsByTagName('who')
+    if len(whos) > 0:
+        irc_nick = getIrcNickAndValidate(whos)
+    else:
+        pass # this is odd, and doesn't it violate the Colloquy spec?  yeeagh
+        # XXX: ignore it until it becomes a problem
 
     if event_name == "memberParted":
         user_object = getUserStatsForNick(irc_nick, userTable, logStartTime)
@@ -125,7 +130,11 @@ def handleEvent(child, userTable, logStartTime):
     return logEndTime
 
 def getIrcNickAndValidate(element_list):
-    first = element_list[0]
+    try:
+        first = element_list[0]
+    except IndexError, msg:
+        print element_list
+        raise
     if len(element_list) > 1:
         parent = first.parentNode
         raise NotSupportedError, "Multiple senders on node: " + parent.toprettyxml()
