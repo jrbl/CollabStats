@@ -102,6 +102,15 @@ def editorStream(wikiDOM):
         dt = dateStrOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         yield (ed, rev, dt)
 
+def proposalStream(wikiDOM):
+    pages       = wikiDOM.getElementsByTagName('page')
+    #proposal_re = re.compile("^(Proposal:)|(Proposals/)")
+    proposal_re = re.compile("^Proposal")
+    for p in pages:
+        ti = getPageTitleText(p)
+        if proposal_re.match(ti):
+            yield ti, p
+
 def lookupOrAdd(name):
     """Looks up name in YAML_DATA, adds it if its not present.
 
@@ -139,6 +148,12 @@ def buildEditorIndex(editor_stream):
         else: 
             editor_index[ed].append( (dt, rev) )
     return editor_index
+
+def buildPageIndex(page_stream):
+    page_index = {}
+    for title, pgref in page_stream:
+        page_index[title] = pgref
+    return page_index
 
 def getRevID(revision):
     return getElementText(revision.getElementsByTagName('id')[0])
@@ -205,7 +220,6 @@ def getPreviousRevision(revision):
     return None
 
 def diffTexts(a, b):
-
     ed_counter = 0
     ed_sizes   = []
     sm = difflib.SequenceMatcher(None, a, b)
@@ -240,8 +254,70 @@ def countedEditorList(revlist):
         else: edlist[editor] += 1
     return edlist.items()
 
-def summaryCountsByDate(event_index):
+def pageCountedEditorList(page):
+    edcounts = {}
+    for rev in page.getElementsByTagName('revision'):
+        editor = getRevEditor((None, rev), False)
+        if editor == None: continue
+        if editor not in edcounts: edcounts[editor] = 1
+        else: edcounts[editor] += 1
+    return edcounts
 
+def activeMonths(page, editor):
+    active = {}
+    for rev in page.getElementsByTagName('revision'):
+        ed = getRevEditor((None, rev), False)
+        if ed != editor: continue
+        time = rev.getElementsByTagName('timestamp')
+        if len(time) == 0: continue
+        time = dateStrOnly(time[0].firstChild.nodeValue)
+        if time.year not in active: 
+            active[time.year] = [False] * 12
+        active[time.year][time.month] = True
+    return active
+
+def edNewInMonth(yr, mo, active):
+    previous = False
+    for year in sorted(active.keys()):
+        for month in range(len(active[year])):
+            if (active[year][month] == True) and (year != yr) and (month != mo):
+                return False
+            elif (active[year][month] == True) and (year == yr) and (month == mo):
+                return True
+            else:
+                continue
+
+def timestampList(wikiDOM):
+    """Returns a list of every timestamp represented in the data set.
+       
+    XXX: Makes no attempt to do gap detection."""
+    allTimes = [dateStrOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp')]
+    return sorted(list(set(allTimes)))
+
+def monthTimestampList(wikiDOM):
+    """Returns a list of pairs representing year/months in the data set."""
+    allTimes = [dateStrOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp')]
+    allTimes = [(t.year, t.month) for t in allTimes]
+    return sorted(list(set(allTimes)))
+
+def datesAndCountsForPagesRevised(time_list, page_list):
+    """Return a dictionary counting how many revisions for each page are on each date."""
+    counts = {}
+    for t in time_list:
+        counts[t] = {}
+        counts['TOTALS'] = {}
+    for title in page_list:
+        for t in time_list:
+            counts[t][title] = 0
+        counts['TOTALS'][title] = 0
+        pgref = page_list[title]
+        pageDates = [dateStrOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
+        for d in pageDates:
+            counts[d][title] += 1
+            counts['TOTALS'][title] += 1
+    return counts
+
+def summaryCountsByDate(event_index):
     total_pages         = {}
     total_content_pages = {}
     total_proposals     = {}
@@ -322,7 +398,6 @@ def summaryCountsByDate(event_index):
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
-    
     if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Starting editor-by-editor processing")
     debug_revs2go = sum([len(v) for v in editor_index.values()])
     debug_counter = 0
@@ -359,6 +434,36 @@ def editorCounts(editor_index):
         output.extend( (len(revlist), original_authorship, avg_edit_count_per_revision, avg_edit_size) )
         yield output
     if VERBOSE: sys.stderr.write("\n" + unicode(datetime.now()) + " ...done.\n")
+
+def proposalCounts(page_index, wikiDOM):
+    # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Starting proposal-based processing...\n")
+    totals = datesAndCountsForPagesRevised(timestampList(wikiDOM), page_index)
+    for title in sorted(page_index.keys()):
+        pg_ref = page_index[title]
+        edcnts = pageCountedEditorList(pg_ref)
+        output = [title, totals['TOTALS'][title], len(edcnts.keys())]       # Name, Edits, Unique Editors
+        for year, month in monthTimestampList(wikiDOM):                     # Total Active Editors per Month (Active = 5+ Edits)
+            edcounts = {}
+            for rev in pg_ref.getElementsByTagName('revision'):
+                editor = getRevEditor((None, rev), False)
+                timestamp = dateStrOnly(rev.getElementsByTagName('timestamp')[0].firstChild.nodeValue)
+                if editor == None: continue
+                if timestamp.year != year: continue
+                if timestamp.month != month: continue
+                if editor in edcounts: edcounts[editor] += 1
+                else: edcounts[editor] = 1
+            output.append( sum([1 for x in edcounts if edcounts[x] >= 5]) )
+        for year, month in monthTimestampList(wikiDOM):                     # New Editors per Month ...
+            counter = 0
+            for editor in edcnts.keys():
+                if edNewInMonth(year, month, activeMonths(pg_ref, editor)):
+                    counter += 1
+            output.append(counter)
+        for date in timestampList(wikiDOM):                                 # Total Edits per day ...
+            output.append(totals[date][title])
+        yield output
+    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " ...done.\n")
 
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
@@ -405,6 +510,16 @@ def getEditorCSVHeaders():
     output.extend( ('Editor', 'Edits', 'Authorship', 'Avg Changes/Rev', 'Avg Change Size') )
     return output
 
+def getPageCSVHeaders(wikiDOM):
+    # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
+    output = ["Page Name", "Total Edits", "Total Unique Editors"]
+    for year, month in monthTimestampList(wikiDOM):                     # Total Active Editors per Month (Active = 5+ Edits)
+        output.append("Active (5+) Eds %s-%s" % (unicode(year), unicode(month)))
+    for year, month in monthTimestampList(wikiDOM):                     # New Editors per Month ...
+        output.append("New Eds %s-%s" % (unicode(year), unicode(month)))
+    for date in timestampList(wikiDOM):                                 # Total Edits per day ...
+        output.append("Eds %s" % unicode(date))
+
 def statsSummary(dumpDOM):
     event_index = buildEventIndex(eventStream(dumpDOM))
     csvOut(summaryCountsByDate(event_index), header=getSummaryCSVHeaders())
@@ -412,6 +527,11 @@ def statsSummary(dumpDOM):
 def statsEditors(dumpDOM):
     editor_index = buildEditorIndex(editorStream(dumpDOM))
     csvOut(editorCounts(editor_index), header=getEditorCSVHeaders() ) 
+
+def statsProposals(dumpDOM):
+    page_index = buildPageIndex(proposalStream(dumpDOM))
+    csvOut(proposalCounts(page_index, dumpDOM), header=getPageCSVHeaders(dumpDOM) )
+    #csvOut(proposalCounts(page_index, dumpDOM), header="" )
 
 def csvOut(iterable, file_obj=sys.stdout, header=None):
     import csv
@@ -477,6 +597,8 @@ if __name__ == "__main__":
                          help="Whole-archive summary stats, including proposal stats")
     parser.add_option('-e', '--editors', dest="editor_stats", action="store_true", default=False,
                          help="Stats broken out on a per-user basis")
+    parser.add_option('-p', '--proposals', dest="proposal_stats", action="store_true", default=False,
+                         help="Stats broken out by proposal")
     parser.add_option('-v', '--verbose', dest="verbose_flag", action="store_true", default=False,
                          help="Produce logging output on stderr")
     parser.add_option('-w', '--wikidump', dest="wikidump", action="store", metavar="FILE",
@@ -510,6 +632,8 @@ if __name__ == "__main__":
         statsSummary(dumpDOM)
     if opts.editor_stats:
         statsEditors(dumpDOM)
+    if opts.proposal_stats:
+        statsProposals(dumpDOM)
 
     close_yaml(yaml_file)
     dumpDOM.unlink()
