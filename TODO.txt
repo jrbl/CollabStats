@@ -1,0 +1,56 @@
+CollabStats Documentation
+TODO
+
+# have separate scripts per report, rather than command-line options. So you 
+  have one script to process the log files into a cache, then one script per 
+  report. Won't be possible for wikistats until cached stats are implemented, 
+  but we can do it right away for ircstats.
+
+# For Change measurement in Wikistats: break this out into Average Inserted and 
+  Average Deleted. Or maybe in addition. 
+
+# Cache wiki stats in a persistent way so that reports can be generated without
+  having to re-process the dump files.
+
+# Tease apart registered users and wiki editors; call the latter Editors.  
+  Gather the former from logging.xml iff it's available and display it as 
+  "Registered Users".  If it's not available, indicate this is the case with 
+  a sentinel.  Document the sentinel in the FAQ.
+
+# Proposals: Before August 12, 2009 only count Proposals/; after this date,
+  only count Proposal: .  This should be more general that that.  There 
+  should be a "Namespace Collapse" feature, where you provide a YAML file 
+  with dates, and it does the math.
+
+# Rather than having Proposal Reg Editors vs. Editors, have Registered versus
+  Anonymous Editor counts.
+
+# Fix Edits/Page Today.  Numbers should all be greater than 1.
+
+# For page stats, remove proposals/ filter; write add-on script that uses pag
+  page stats and does Proposal filtering after the fact.
+ 
+# For page stats, join talk pages to their content pages - make talk pages a 
+  column on the output line for a content page
+
+# Tutorial Documentation
+
+# More Wiki Stats: Cf. Wiki Analytics page on Forge
+
+# CRC IRC chat files so we can recognize file content we've previously 
+  processed and skip over it.
+
+# Write an XChat parser/processor front-end
+
+# Probably we want to get rid of irc_users.pickle in favor of a single big 
+  entity stats keeper that keeps stats across domains - irc, wikis, whatever.
+  What are the central abstractions for a user and the numbers about them,
+  when the numbers about them can come from so many places?  And how does 
+  this related to non-user entities, like pages or whole-wikis?
+
+# Since user-merges requires that we specify the wiki domain with -w, perhaps
+  we should explicitly require the irc domain be specified with -i, for 
+  symmetry?
+
+# SAXify
+

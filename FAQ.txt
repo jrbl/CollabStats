@@ -1,0 +1,52 @@
+CollabStats Documentation
+FAQ
+
+# Q) Wikistats should merge wiki usernames to irc usernames automatically,
+  and it should be smarter about what names should get merged - e.g., wiki
+  user "Finklestein" should merge to irc user "finklestein".
+  A) No, it shouldn't.  Wikistats doesn't attempt any user name merging -
+  by design.  I felt that the two domains (Wikis and IRC) were so distinct 
+  (for social reasons and technical ones) that you couldn't reasonably 
+  count on users with similar names between them to be the same individual.  
+  I thought that inappropriate username merging would be worse than none 
+  at all, so for joining the wiki and IRC domains, my mental model has you 
+  using 'user_merges -w' and confirming each choice.
+
+# Q) In Wikistats, using the Editor Report, what does the "Pages Created" 
+  column actually measure?
+  A) For a given registered username, it measures the number of pages for 
+  which the lowest-numbered revision was created by this username.  It
+  includes counts of every page type, including User and Talk pages.
+
+# Q) In Wikistats, some reports mention Changes and some reports mention 
+  Edits.  What is the difference between a Change and an Edit?
+  A) An Edit is a collection of Changes to a particular page - recorded in
+  the wiki dumps as a distinct revision.  A Change in one or more bytes which
+  are different between the last revision and the current one.  It could be 
+  an insertion, a deletion, or a replacement (note that replacements need not 
+  be the same length as the text they replace).
+
+# Q) In Wikistats, the Editor's Change Count and Change Size scores are 
+  presented as a number.  What do they mean?
+  A) The Change Size number represents the number of modifications necessary 
+  to get from one page revision to another.  The counting is +1 per letter 
+  inserted, +1 per letter deleted, and +1 for each character in a 
+  substitution.  So for a particular editor, the Average Change Count tells you
+  about how many places they make changes to a particular page, nad the Average
+  Change Size tells you about how big those changes tend to be.  
+
+  For example, someone with a high Average Change Count and a low Average 
+  Change Size is probably making a lot of minor edits, like spelling or 
+  punctuation changes.  If the inverse is true, then they're probably 
+  authoring a lot of original content.
+
+# Q) In Wikistats, how are months computed?
+  A) Months as represented are standard calendar months.  If a date range is
+  not indicated for some stat, then the stat output represents counts since
+  "the beginning of time" - the first revision of the first page at the 
+  creation of the wiki, up until the moment that the stats dump was created.
+
+# Q) In Wikistats, what pages are being referred to as "content pages"?
+  A) Every page which fails to match a search for "User:*" and "* talk:".
+
+ 

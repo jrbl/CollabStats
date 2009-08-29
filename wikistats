@@ -406,7 +406,7 @@ def editorCounts(editor_index):
         output = [ ed ]
         revlist = editor_index[ed]
 
-        original_authorship = 0
+        pages_created = 0
         edit_counts = [ ]
         edit_sizes = 0
 
@@ -421,7 +421,7 @@ def editorCounts(editor_index):
             prev = getPreviousRevision(rev)
             if prev == None: 
                 prev_text = ''
-                original_authorship += 1
+                pages_created += 1
             else: prev_text = getRevisionText(prev)
             cur_text = getRevisionText(rev)
             editCount, editSizes = diffTexts(prev_text, cur_text)
@@ -431,7 +431,7 @@ def editorCounts(editor_index):
         avg_edit_count_per_revision = float(sum(edit_counts))/len(edit_counts)
         avg_edit_size = float(edit_sizes)/len(edit_counts) 
 
-        output.extend( (len(revlist), original_authorship, avg_edit_count_per_revision, avg_edit_size) )
+        output.extend( (len(revlist), pages_created, avg_edit_count_per_revision, avg_edit_size) )
         yield output
     if VERBOSE: sys.stderr.write("\n" + unicode(datetime.now()) + " ...done.\n")
 
@@ -501,13 +501,13 @@ def getEditorCSVHeaders():
 
     Editor: Registered nick of the editor
     Edits: Number of edits since dawn of time
-    Authorship: Number of first revisions since dawn of time
+    Pages Created: Number of first revisions since dawn of time
     Avg Changes/Rev: Average number of changes made to the text per revision
     Avg Change Size: Average size of changes made to texts, in characters
     """
 
     output = []
-    output.extend( ('Editor', 'Edits', 'Authorship', 'Avg Changes/Rev', 'Avg Change Size') )
+    output.extend( ('Editor', 'Edits', 'Pages Created', 'Avg Changes/Rev', 'Avg Change Size') )
     return output
 
 def getPageCSVHeaders(wikiDOM):
