@@ -330,7 +330,7 @@ def summaryCountsByDate(event_index):
         output = [unicode(date.date())]
         proposal_re      = re.compile("^(Proposal:)|(Proposals/)")
         pages_to_skip_re = re.compile("^(Template:)")
-        non_content_re   = re.compile("^(User:)|(Talk )|(.+ talk:)|(Template:)")
+        non_content_re   = re.compile("^(User:)|(Talk[: ])|(.+ talk:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)")
 
         proposals_edited     = 0
         new_proposals_today  = 0
@@ -348,18 +348,19 @@ def summaryCountsByDate(event_index):
             pagename     = getPageTitleText(page)
 
             # Summary (Philippe) Stats
+            if pagename not in total_pages: 
+                new_flag = True
+                total_pages[pagename] = date
             if pages_to_skip_re.match(pagename):           # no counting of any kind for pages marked for skipping
                 good_content = good_content                # no-op to make it clear we're doing an OR of goodness values
                 continue                              
             good_content = True                            # One unskipped page on a date makes the date good
-            if pagename not in total_pages: 
-                new_flag = True
-                total_pages[pagename] = date
             if new_flag:
                 if proposal_re.match(pagename):
                     total_proposals[pagename] = date
                 elif not non_content_re.match(pagename): 
                     total_content_pages[pagename] = date
+                    sys.stderr.write("%s\n" % pagename) # DEBUG
             for editor in editorList(revlist, True):
                 if editor not in registered_users:
                     registered_users[editor] = date
@@ -478,7 +479,7 @@ def getSummaryCSVHeaders():
 
         Date: a day.
         Total Content Pages: The total number of pages whose names don't begin with 
-            "User" or "Talk".  Should increase monotonically.
+            "User", "Talk", or "Template".  Should increase monotonically.
         Total Pages: The total number of pages in the wiki.  Should increase 
             monotonically.
         Registered Users: The total count of unique usernames seen in the log. 
