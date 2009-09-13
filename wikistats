@@ -34,7 +34,7 @@ from DictDB import DictDB
 # Proposals:, and most of them were.  But b/c of policy decisions and the way Mediawiki does data
 # dumps, we have to cope with the ugly reality
 ### FIXME: we should actually support this, but more discussion about the right thing needs to happen
-dateProposalsChanged = datetime(2009, 8, 12) # XXX: Probably incorrect date; get good one from Eugene
+dateProposalsChanged = datetime(2009, 8, 12) 
 
 VERBOSE    = False
 YAML_DATA  = None
@@ -326,9 +326,11 @@ def summaryCountsByDate(event_index):
     new_reg_users       = 0
 
     for date in sorted(event_index.keys()):
+        good_content     = False
         output = [unicode(date.date())]
-        proposal_re    = re.compile("^(Proposal:)|(Proposals/)")
-        non_content_re = re.compile("^(User:)|(Talk )|(.+ talk:)")
+        proposal_re      = re.compile("^(Proposal:)|(Proposals/)")
+        pages_to_skip_re = re.compile("^(Template:)")
+        non_content_re   = re.compile("^(User:)|(Talk )|(.+ talk:)|(Template:)")
 
         proposals_edited     = 0
         new_proposals_today  = 0
@@ -346,6 +348,10 @@ def summaryCountsByDate(event_index):
             pagename     = getPageTitleText(page)
 
             # Summary (Philippe) Stats
+            if pages_to_skip_re.match(pagename):           # no counting of any kind for pages marked for skipping
+                good_content = good_content                # no-op to make it clear we're doing an OR of goodness values
+                continue                              
+            good_content = True                            # One unskipped page on a date makes the date good
             if pagename not in total_pages: 
                 new_flag = True
                 total_pages[pagename] = date
@@ -378,6 +384,8 @@ def summaryCountsByDate(event_index):
                 if editor[0] in authors_today: authors_today[editor[0]] += editor[1]
                 else: authors_today[editor[0]] = editor[1]
 
+        if good_content == False:                          # Only skipped pages on a date make the date bad       
+            continue
         # Erik's stats Pt. 2
         ed_per_pg_tot = sum(edits_by_pages)    
         ed_per_pg_avg = float(len(event_index[date].keys()))/ed_per_pg_tot if ed_per_pg_tot else 0
@@ -519,6 +527,7 @@ def getPageCSVHeaders(wikiDOM):
         output.append("New Eds %s-%s" % (unicode(year), unicode(month)))
     for date in timestampList(wikiDOM):                                 # Total Edits per day ...
         output.append("Eds %s" % unicode(date))
+    return output
 
 def statsSummary(dumpDOM):
     event_index = buildEventIndex(eventStream(dumpDOM))
@@ -625,8 +634,13 @@ if __name__ == "__main__":
         yaml_file = opts.yaml_file
     VERBOSE = opts.verbose_flag
 
-    read_yaml(yaml_file)
-    dumpDOM = getDOM(wikidump)
+    if (opts.summary_stats or opts.editor_stats or opts.proposal_stats):
+        read_yaml(yaml_file)
+        dumpDOM = getDOM(wikidump)
+    else: 
+        sys.stderr.write("Please select from -e, -p, -s\n")
+        parser.print_help()
+        sys.exit()
 
     if opts.summary_stats:
         statsSummary(dumpDOM)
