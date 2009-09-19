@@ -324,13 +324,19 @@ def summaryCountsByDate(event_index):
     registered_users    = {}
     total_edits         = 0
     new_reg_users       = 0
+    global dateProposalsChanged
+    PROPS_CHANGED       = False
+    debug_printed = False
+
+    proposal_re_str    = "^(Proposals/)"
+    non_content_re_str = "^(User:)|(Talk[: ])|(.+ talk:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)"
+
+    proposal_re = re.compile(proposal_re_str)
+    non_content_re = re.compile(non_content_re_str)
 
     for date in sorted(event_index.keys()):
         good_content     = False
         output = [unicode(date.date())]
-        proposal_re      = re.compile("^(Proposal:)|(Proposals/)")
-        pages_to_skip_re = re.compile("^(Template:)")
-        non_content_re   = re.compile("^(User:)|(Talk[: ])|(.+ talk:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)")
 
         proposals_edited     = 0
         new_proposals_today  = 0
@@ -342,6 +348,39 @@ def summaryCountsByDate(event_index):
         new_pages_today      = [ ]
         authors_today        = {}
 
+        if (PROPS_CHANGED == False) and (date >= dateProposalsChanged):
+            if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " reached %s; changing 'Proposals/' -> 'Proposal:'\n" % str(dateProposalsChanged))
+            sys.stderr.write("DEBUG: " + str(len(total_content_pages.keys())) + ' ')
+            for key in total_content_pages.keys():
+                if key.find('Prop') != -1:
+                    sys.stderr.write(key + ", ")
+            sys.stderr.write("\n")
+            new_totals = {}
+            for propname, date in sorted(total_proposals.items()):
+                newname = propname
+                if propname[:10] == "Proposals/":
+                    newname = "Proposal:" + propname[11:]
+                    del total_pages[propname]
+                    total_pages[newname] = date
+                    del total_content_pages[propname]
+                    total_content_pages[newname] = date
+                new_totals[newname] = date
+            total_proposals = new_totals
+            non_content_re_str += "|(Proposals/)"
+            sys.stderr.write("DEBUG: " + non_content_re_str + '\n') # DEBUG
+            non_content_re = re.compile(non_content_re_str)
+            proposal_re_str = "^(Proposal:)"
+            sys.stderr.write("DEBUG: " + proposal_re_str + '\n') # DEBUG
+            proposal_re = re.compile(proposal_re_str)
+            PROPS_CHANGED = True
+        if PROPS_CHANGED == True and debug_printed == False:
+            sys.stderr.write("DEBUG: " + str(len(total_content_pages.keys())) + ' ')
+            for key in total_content_pages.keys():
+                if key.find('Prop') != -1:
+                    sys.stderr.write(key + ", ")
+            sys.stderr.write("\n")
+            debug_printed = True
+
         for page in sorted(event_index[date].keys()):
             new_flag     = False
             revlist      = event_index[date][page]
@@ -351,16 +390,13 @@ def summaryCountsByDate(event_index):
             if pagename not in total_pages: 
                 new_flag = True
                 total_pages[pagename] = date
-            if pages_to_skip_re.match(pagename):           # no counting of any kind for pages marked for skipping
-                good_content = good_content                # no-op to make it clear we're doing an OR of goodness values
+            if non_content_re.match(pagename):             # Page marked for skipping count only towards our grand total
+                good_content = good_content                # no-op to make it clear we're doing disjunction of goodness 
                 continue                              
+
             good_content = True                            # One unskipped page on a date makes the date good
-            if new_flag:
-                if proposal_re.match(pagename):
-                    total_proposals[pagename] = date
-                elif not non_content_re.match(pagename): 
-                    total_content_pages[pagename] = date
-                    sys.stderr.write("%s\n" % pagename) # DEBUG
+            total_content_pages[pagename] = date
+
             for editor in editorList(revlist, True):
                 if editor not in registered_users:
                     registered_users[editor] = date
@@ -369,6 +405,8 @@ def summaryCountsByDate(event_index):
 
             # Proposal Stats
             if proposal_re.match(pagename):
+                if date < dateProposalsChanged: sys.stderr.write(pagename +'\n')
+                total_proposals[pagename] = date
                 proposals_edited += 1
                 proposal_edits  += len(revlist)
                 if new_flag: new_proposals_today += 1
@@ -482,7 +520,7 @@ def getSummaryCSVHeaders():
             "User", "Talk", or "Template".  Should increase monotonically.
         Total Pages: The total number of pages in the wiki.  Should increase 
             monotonically.
-        Registered Users: The total count of unique usernames seen in the log. 
+        Page Editors: The total count of unique usernames seen in the log. 
             Should increase monotonically.
         Total Edits: The total number of revisions to pages since the dawn of time.  
             Should increase monotonically.
@@ -499,8 +537,8 @@ def getSummaryCSVHeaders():
     """
 
     output = []
-    output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Registered Users', 'Total Edits', 
-                    'New Registered Users', 'Total Proposals', 'Proposals Edited', 'New Proposals', 
+    output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Page Editors', 'Total Edits', 
+                    'New Page Editors', 'Total Proposals', 'Proposals Edited', 'New Proposals', 
                     'Proposal Edits', 'Proposal Reg Editors', 'Proposal Editors', 'Edits/Page Today', 
                     'New Pages Today', '# Editors w/5+ Today', 'Editors w/5+ Today') )  
     return output
