@@ -28,13 +28,7 @@ import re
 import difflib
 
 from DictDB import DictDB
-
-#### 
-# Proposals were in Proposals/ until a certain date, and then they were all supposed to be moved to 
-# Proposals:, and most of them were.  But b/c of policy decisions and the way Mediawiki does data
-# dumps, we have to cope with the ugly reality
-### FIXME: we should actually support this, but more discussion about the right thing needs to happen
-dateProposalsChanged = datetime(2009, 8, 12) 
+from EasyIO import *         # ewriteln, owriteln, ewrite, owrite, VERBOSE_OUT, DEBUG_OUT
 
 VERBOSE    = False
 YAML_DATA  = None
@@ -45,14 +39,14 @@ HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
 # Utility Functions
 def getDOM(filename):
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Reading XML Dump into memory...\n")
+    VERBOSE_OUT("Reading XML Dump into memory...", unicode(datetime.now())+' ')
     #import codecs
     #f = codecs.open(filename, 'rb', encoding='utf-8')
     dd = md.parse(filename)
     if dd.documentElement.tagName != u'mediawiki':
         print "%s does not appear to be a MediaWiki dump.  Skipping..." % filename
         sys.exit()
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " ...done.\n")
+    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
     return dd
 
 def wikiPages(wikiDOM):
@@ -324,12 +318,9 @@ def summaryCountsByDate(event_index):
     registered_users    = {}
     total_edits         = 0
     new_reg_users       = 0
-    global dateProposalsChanged
-    PROPS_CHANGED       = False
-    debug_printed = False
 
-    proposal_re_str    = "^(Proposals/)"
-    non_content_re_str = "^(User:)|(Talk[: ])|(.+ talk:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)"
+    proposal_re_str    = "^(Proposal:)"
+    non_content_re_str = "^(User:)|(Talk[: ])|(.+ talk:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)|(Proposals/)"
 
     proposal_re = re.compile(proposal_re_str)
     non_content_re = re.compile(non_content_re_str)
@@ -347,39 +338,6 @@ def summaryCountsByDate(event_index):
         edits_by_pages       = [ ]
         new_pages_today      = [ ]
         authors_today        = {}
-
-        if (PROPS_CHANGED == False) and (date >= dateProposalsChanged):
-            if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " reached %s; changing 'Proposals/' -> 'Proposal:'\n" % str(dateProposalsChanged))
-            sys.stderr.write("DEBUG: " + str(len(total_content_pages.keys())) + ' ')
-            for key in total_content_pages.keys():
-                if key.find('Prop') != -1:
-                    sys.stderr.write(key + ", ")
-            sys.stderr.write("\n")
-            new_totals = {}
-            for propname, date in sorted(total_proposals.items()):
-                newname = propname
-                if propname[:10] == "Proposals/":
-                    newname = "Proposal:" + propname[11:]
-                    del total_pages[propname]
-                    total_pages[newname] = date
-                    del total_content_pages[propname]
-                    total_content_pages[newname] = date
-                new_totals[newname] = date
-            total_proposals = new_totals
-            non_content_re_str += "|(Proposals/)"
-            sys.stderr.write("DEBUG: " + non_content_re_str + '\n') # DEBUG
-            non_content_re = re.compile(non_content_re_str)
-            proposal_re_str = "^(Proposal:)"
-            sys.stderr.write("DEBUG: " + proposal_re_str + '\n') # DEBUG
-            proposal_re = re.compile(proposal_re_str)
-            PROPS_CHANGED = True
-        if PROPS_CHANGED == True and debug_printed == False:
-            sys.stderr.write("DEBUG: " + str(len(total_content_pages.keys())) + ' ')
-            for key in total_content_pages.keys():
-                if key.find('Prop') != -1:
-                    sys.stderr.write(key + ", ")
-            sys.stderr.write("\n")
-            debug_printed = True
 
         for page in sorted(event_index[date].keys()):
             new_flag     = False
@@ -405,7 +363,6 @@ def summaryCountsByDate(event_index):
 
             # Proposal Stats
             if proposal_re.match(pagename):
-                if date < dateProposalsChanged: sys.stderr.write(pagename +'\n')
                 total_proposals[pagename] = date
                 proposals_edited += 1
                 proposal_edits  += len(revlist)
@@ -445,7 +402,7 @@ def summaryCountsByDate(event_index):
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Starting editor-by-editor processing")
+    VERBOSE_OUT("Starting editor-by-editor processing", unicode(datetime.now())+' ')
     debug_revs2go = sum([len(v) for v in editor_index.values()])
     debug_counter = 0
     debug_2pct = debug_revs2go/50
@@ -480,11 +437,11 @@ def editorCounts(editor_index):
 
         output.extend( (len(revlist), pages_created, avg_edit_count_per_revision, avg_edit_size) )
         yield output
-    if VERBOSE: sys.stderr.write("\n" + unicode(datetime.now()) + " ...done.\n")
+    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
 
 def proposalCounts(page_index, wikiDOM):
     # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Starting proposal-based processing...\n")
+    VERBOSE_OUT("Starting proposal-based processing...", unicode(datetime.now())+' ')
     totals = datesAndCountsForPagesRevised(timestampList(wikiDOM), page_index)
     for title in sorted(page_index.keys()):
         pg_ref = page_index[title]
@@ -510,7 +467,7 @@ def proposalCounts(page_index, wikiDOM):
         for date in timestampList(wikiDOM):                                 # Total Edits per day ...
             output.append(totals[date][title])
         yield output
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " ...done.\n")
+    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
 
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
@@ -568,17 +525,17 @@ def getPageCSVHeaders(wikiDOM):
         output.append("Eds %s" % unicode(date))
     return output
 
-def statsSummary(dumpDOM):
+def statsSummary(dumpDOM, output=sys.stdout):
     event_index = buildEventIndex(eventStream(dumpDOM))
-    csvOut(summaryCountsByDate(event_index), header=getSummaryCSVHeaders())
+    csvOut(summaryCountsByDate(event_index), output, header=getSummaryCSVHeaders())
 
-def statsEditors(dumpDOM):
+def statsEditors(dumpDOM, output=sys.stdout):
     editor_index = buildEditorIndex(editorStream(dumpDOM))
-    csvOut(editorCounts(editor_index), header=getEditorCSVHeaders() ) 
+    csvOut(editorCounts(editor_index), output, header=getEditorCSVHeaders() ) 
 
-def statsProposals(dumpDOM):
+def statsProposals(dumpDOM, output=sys.stdout):
     page_index = buildPageIndex(proposalStream(dumpDOM))
-    csvOut(proposalCounts(page_index, dumpDOM), header=getPageCSVHeaders(dumpDOM) )
+    csvOut(proposalCounts(page_index, dumpDOM), output, header=getPageCSVHeaders(dumpDOM) )
     #csvOut(proposalCounts(page_index, dumpDOM), header="" )
 
 def csvOut(iterable, file_obj=sys.stdout, header=None):
@@ -594,9 +551,9 @@ def read_yaml(filename):
     global YAML_DATA
     global YAML_INDEX
     YAML_DATA = DictDB(filename, format='yaml', verbose=VERBOSE)
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " Building index...\n")
+    VERBOSE_OUT("Building index...", unicode(datetime.now()))
     YAML_INDEX = wikinameIndexFromYAML()
-    if VERBOSE: sys.stderr.write(unicode(datetime.now()) + " done.\n")
+    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
     return YAML_DATA, YAML_INDEX
 
 def close_yaml(filename):
@@ -653,6 +610,8 @@ if __name__ == "__main__":
                          help="Process Mediawiki dump file FILE")
     parser.add_option('-y', '--yaml-file', dest="yaml_file", action="store", metavar="FILE",
                          help="Dereference usernames against YAML file FILE")
+    parser.add_option('-o', '--output', dest="outfile", action="store", metavar="FILE", default='',
+                         help="Write CSV output to FILE")
     
     opts, args = parser.parse_args()
     if len(sys.argv) == 1:
@@ -673,6 +632,13 @@ if __name__ == "__main__":
         yaml_file = opts.yaml_file
     VERBOSE = opts.verbose_flag
 
+    outfile = sys.stdout
+    if opts.outfile:
+        outfile = open(opts.outfile, 'w')
+    else: 
+        if VERBOSE: ewriteln("Using verbose without specifying an outfile is ill-advised.", 
+                             "WARNING: ")
+
     if (opts.summary_stats or opts.editor_stats or opts.proposal_stats):
         read_yaml(yaml_file)
         dumpDOM = getDOM(wikidump)
@@ -682,11 +648,11 @@ if __name__ == "__main__":
         sys.exit()
 
     if opts.summary_stats:
-        statsSummary(dumpDOM)
+        statsSummary(dumpDOM, outfile)
     if opts.editor_stats:
-        statsEditors(dumpDOM)
+        statsEditors(dumpDOM, outfile)
     if opts.proposal_stats:
-        statsProposals(dumpDOM)
+        statsProposals(dumpDOM, outfile)
 
     close_yaml(yaml_file)
     dumpDOM.unlink()
