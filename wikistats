@@ -330,6 +330,7 @@ def summaryCountsByDate(event_index):
     proposal_re = re.compile(proposal_re_str)
     non_content_re = re.compile(non_content_re_str)
 
+    debugnames = {'DEFAULT': {}}   #####DEBUG
     for date in sorted(event_index.keys()):
         good_content     = False
         output = [unicode(date.date())]
@@ -364,6 +365,22 @@ def summaryCountsByDate(event_index):
             good_content = True                            # One unskipped page on a date makes the date good
             total_content_pages[pagename] = date
 
+            ########################DEBUG
+            colon = pagename.find(':')
+            if colon != -1:
+                namespace = pagename[0:colon]
+                title = pagename[colon+1:]
+                if namespace in debugnames: 
+                    if title in debugnames[namespace]: debugnames[namespace][title] += 1
+                    else: debugnames[namespace][title] = 1
+                else: debugnames[namespace] = {title : 1}
+            else:
+                namespace = 'DEFAULT'
+                title = pagename
+                if title in debugnames[namespace]: debugnames[namespace][title] += 1
+                else: debugnames[namespace][title] = 1
+            ########################DEBUG
+
             for editor in editorList(revlist, True):
                 if editor not in registered_users:
                     registered_users[editor] = date
@@ -391,6 +408,7 @@ def summaryCountsByDate(event_index):
 
         if good_content == False:                          # Only skipped pages on a date make the date bad       
             continue
+
         # Erik's stats Pt. 2
         ed_per_pg_tot = sum(edits_by_pages)    
         ed_per_pg_avg = float(len(event_index[date].keys()))/ed_per_pg_tot if ed_per_pg_tot else 0
@@ -408,6 +426,11 @@ def summaryCountsByDate(event_index):
                        ed_per_pg_avg, len(new_pages_today), len(eds5_today))  )
         output.append( eds5_today_str )
         yield output
+
+    ########################
+    for ns in debugnames.keys():
+        ewriteln("%s, %s" % (ns, len(debugnames[ns].keys())), 'DEBUG: ')
+    ########################
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
