@@ -311,6 +311,11 @@ def datesAndCountsForPagesRevised(time_list, page_list):
             counts['TOTALS'][title] += 1
     return counts
 
+def is_redirect(page):
+    if len(page.getElementsByTagName('redirect')) == 0:
+        return False
+    return True
+
 def summaryCountsByDate(event_index):
     total_pages         = {}
     total_content_pages = {}
@@ -320,7 +325,7 @@ def summaryCountsByDate(event_index):
     new_reg_users       = 0
 
     proposal_re_str    = "^(Proposal:)"
-    non_content_re_str = "^(User:)|(Talk[: ])|(.+ talk:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)|(Proposals/)"
+    non_content_re_str = "^(User:)|(Talk[: ])|(.+ talk:)|(Media:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)|(Proposals/)"
 
     proposal_re = re.compile(proposal_re_str)
     non_content_re = re.compile(non_content_re_str)
@@ -348,9 +353,13 @@ def summaryCountsByDate(event_index):
             if pagename not in total_pages: 
                 new_flag = True
                 total_pages[pagename] = date
+
             if non_content_re.match(pagename):             # Page marked for skipping count only towards our grand total
                 good_content = good_content                # no-op to make it clear we're doing disjunction of goodness 
                 continue                              
+            if is_redirect(page):                          # also skip redirects
+                good_content = good_content
+                continue
 
             good_content = True                            # One unskipped page on a date makes the date good
             total_content_pages[pagename] = date
