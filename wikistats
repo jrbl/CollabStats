@@ -34,7 +34,7 @@ VERBOSE    = False
 YAML_DATA  = None
 YAML_INDEX = None
 MONTHS_IN_DATASET = None
-TIME_STAMP_LIST = None
+DATE_STAMP_LIST = None
 
 HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
@@ -78,12 +78,6 @@ def getElementText(element):
 def getPageTitleText(page):
     return getElementText(page.getElementsByTagName('title')[0])
 
-#def dateTimeStr(dt_string):
-#    return datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%sZ")
-
-#def dateStrOnly(dt_string):
-#    return datetime.strptime(dt_string[:10], "%Y-%m-%d")
-
 def dateTupOnly(dt_string):
     """Convert a string with an ISO date into a tuple of year, month, day."""
     return (dt_string[:4], dt_string[5:7], dt_string[8:10])
@@ -91,7 +85,6 @@ def dateTupOnly(dt_string):
 def eventStream(wikiDOM):
     times = wikiDOM.getElementsByTagName('timestamp')
     for t in times:
-        #dt = dateStrOnly(t.firstChild.nodeValue)
         dt = dateTupOnly(t.firstChild.nodeValue)
         rev = t.parentNode
         pg = t.parentNode.parentNode
@@ -102,7 +95,6 @@ def editorStream(wikiDOM):
     for e in editors:
         ed = lookupOrAdd(getElementText(e))
         rev = e.parentNode.parentNode
-        #dt = dateStrOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         dt = dateTupOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         yield (ed, rev, dt)
 
@@ -141,10 +133,10 @@ def _populateDateCaches(dom):
     Cf. timestampList
     Cf. monthTimestampList
     """
-    global TIME_STAMP_LIST
+    global DATE_STAMP_LIST
     global MONTHS_IN_DATASET
-    if TIME_STAMP_LIST == None:
-        TIME_STAMP_LIST = timestampList(dom)
+    if DATE_STAMP_LIST == None:
+        DATE_STAMP_LIST = timestampList(dom)
     if MONTHS_IN_DATASET == None:
         MONTHS_IN_DATASET = monthTimestampList(dom)
     return
@@ -152,7 +144,7 @@ def _populateDateCaches(dom):
 def buildDateCache(dom):
     """Make sure that the date caches are built correctly; error if not."""
     _populateDateCaches(dom)
-    if TIME_STAMP_LIST == None or MONTHS_IN_DATASET == None:
+    if DATE_STAMP_LIST == None or MONTHS_IN_DATASET == None:
         raise Exception, "Date cache initialization failed."
     return
 
@@ -299,11 +291,12 @@ def activeMonths(page, editor):
         if ed != editor: continue
         time = rev.getElementsByTagName('timestamp')
         if len(time) == 0: continue
-        #time = dateStrOnly(time[0].firstChild.nodeValue)
         time = dateTupOnly(time[0].firstChild.nodeValue)
-        if time[0] not in active: 
-            active[time[0]] = [False] * 12
-        active[time[0]][time[1]] = True
+        yr = time[0]
+        mo = int(time[1]) - 1
+        if yr not in active: 
+            active[yr] = [False] * 12
+        active[yr][mo] = True
     return active
 
 def edNewInMonth(yr, mo, active):
@@ -326,17 +319,18 @@ def timestampList(wikiDOM):
 
 def monthTimestampList(wikiDOM):
     """Returns a list of pairs representing year/months in the data set."""
-    global TIME_STAMP_LIST
-    if TIME_STAMP_LIST == None:
-        TIME_STAMP_LIST = timestampList(wikiDOM)
-    allTimes = [(t.year, t.month) for t in TIME_STAMP_LIST]
+    global DATE_STAMP_LIST
+    if DATE_STAMP_LIST == None:
+        DATE_STAMP_LIST = timestampList(wikiDOM)
+    allTimes = [(t[0], t[1]) for t in DATE_STAMP_LIST]
     return sorted(list(set(allTimes)))
 
 def datesAndCountsForPagesRevised(time_list, page_list):
     """Return a dictionary counting how many revisions for each page are on each date."""
     counts = {}
     for t in time_list:
-        counts[t] = {}
+        ts = '-'.join(t)
+        counts[ts] = {}
         counts['TOTALS'] = {}
     for title in page_list:
         for t in time_list:
@@ -344,7 +338,6 @@ def datesAndCountsForPagesRevised(time_list, page_list):
             counts[ts][title] = 0
         counts['TOTALS'][title] = 0
         pgref = page_list[title]
-        #pageDates = [dateStrOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
         pageDates = [dateTupOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
         for d in pageDates:
             ds = '-'.join(d)
@@ -436,19 +429,16 @@ def summaryCountsByDate(event_index):
         # Erik's stats Pt. 2
         ed_per_pg_tot = sum(edits_by_pages)    
         ed_per_pg_avg = float(len(event_index[date].keys()))/ed_per_pg_tot if ed_per_pg_tot else 0
-        eds5_today = [x[0] for x in authors_today.items() if x[1] >= 5]
-        #eds5_today_str = u''
-        eds5_today_str = ''
-        for name in eds5_today:
-            #eds5_today_str += name.decode("utf-8") + ','
-            eds5_today_str += name + ','
-        #esds5_today_str = eds5_today_str.encode("utf-8")
+        eds10_today = [x[0] for x in authors_today.items() if x[1] >= 10]
+        eds10_today_str = ''
+        for name in eds10_today:
+            eds10_today_str += name + ','
 
         output.extend( (len(total_content_pages.keys()), len(total_pages.keys()), len(registered_users.keys()), 
                        total_edits, new_reg_users, len(total_proposals.keys()), proposals_edited, 
                        new_proposals_today, proposal_edits, proposal_registered_editors, proposal_editors, 
-                       ed_per_pg_avg, len(new_pages_today), len(eds5_today))  )
-        output.append( eds5_today_str )
+                       ed_per_pg_avg, len(new_pages_today), len(eds10_today))  )
+        output.append( eds10_today_str )
         yield output
 
 def editorCounts(editor_index):
@@ -493,7 +483,7 @@ def editorCounts(editor_index):
 def proposalCounts(page_index, wikiDOM):
     DEBUG_ERR("Starting proposal-based processing...", unicode(getWallTime())+' ')
     buildDateCache(wikiDOM)
-    totals = datesAndCountsForPagesRevised(TIME_STAMP_LIST, page_index)
+    totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, page_index)
     for title in sorted(page_index.keys()):
         pg_ref = page_index[title]
         edcnts = pageCountedEditorList(pg_ref)
@@ -503,22 +493,21 @@ def proposalCounts(page_index, wikiDOM):
             edcounts = {}
             for rev in pg_ref.getElementsByTagName('revision'):
                 editor = getRevEditor((None, rev), False)
-                #timestamp = dateStrOnly(rev.getElementsByTagName('timestamp')[0].firstChild.nodeValue)
                 timestamp = dateTupOnly(rev.getElementsByTagName('timestamp')[0].firstChild.nodeValue)
                 if editor == None: continue
                 if timestamp[0] != year: continue
                 if timestamp[1] != month: continue
                 if editor in edcounts: edcounts[editor] += 1
                 else: edcounts[editor] = 1
-            output.append( sum([1 for x in edcounts if edcounts[x] >= 5]) )
+            output.append( sum([1 for x in edcounts if edcounts[x] >= 10]) )
         for year, month in MONTHS_IN_DATASET:                                # New Editors per Month ...
             counter = 0
             for editor in edcnt_keys:
                 if edNewInMonth(year, month, activeMonths(pg_ref, editor)):
                     counter += 1
             output.append(counter)
-        for date in TIME_STAMP_LIST:                                         # Total Edits per day ...
-            output.append(totals[date][title])
+        for date in DATE_STAMP_LIST:                                         # Total Edits per day ...
+            output.append(totals['-'.join(date)][title])
         yield output
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
 
@@ -550,7 +539,7 @@ def getSummaryCSVHeaders():
     output.extend( ('Date', 'Total Content Pages', 'Total Pages', 'Page Editors', 'Total Edits', 
                     'New Page Editors', 'Total Proposals', 'Proposals Edited', 'New Proposals', 
                     'Proposal Edits', 'Proposal Reg Editors', 'Proposal Editors', 'Edits/Page Today', 
-                    'New Pages Today', '# Editors w/5+ Today', 'Editors w/5+ Today') )  
+                    'New Pages Today', '# Editors w/10+ Today', 'Editors w/10+ Today') )  
     return output
 
 def getEditorCSVHeaders():
@@ -571,13 +560,12 @@ def getPageCSVHeaders(wikiDOM):
     # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
     buildDateCache(wikiDOM)
     output = ["Page Name", "Total Edits", "Total Unique Editors"]
-    for year, month in MONTHS_IN_DATASET:                                # Total Active Editors per Month (Active = 5+ Edits)
-        output.append("Active (5+) Eds %s-%s" % (unicode(year), unicode(month)))
+    for year, month in MONTHS_IN_DATASET:                                # Total Active Editors per Month (Active = 10+ Edits)
+        output.append("Active (10+) Eds %s-%s" % (unicode(year), unicode(month)))
     for year, month in MONTHS_IN_DATASET:                                # New Editors per Month ...
         output.append("New Eds %s-%s" % (unicode(year), unicode(month)))
-    #for date in timestampList(wikiDOM):                                 # Total Edits per day ...
-    for date in TIME_STAMP_LIST:                                         # Total Edits per day ...
-        output.append("Eds %s" % unicode(date))
+    for date in DATE_STAMP_LIST:                                         # Total Edits per day ...
+        output.append("Eds %s" % unicode('-'.join(date)))
     return output
 
 def statsSummary(dumpDOM, output=sys.stdout):
