@@ -100,7 +100,8 @@ def editorStream(wikiDOM):
 
 def proposalStream(wikiDOM):
     pages       = wikiDOM.getElementsByTagName('page')
-    proposal_re = re.compile("^Proposal")
+    #proposal_re = re.compile("^Proposal:")
+    proposal_re = re.compile("^Proposal:|^Proposal talk:")
     for p in pages:
         ti = getPageTitleText(p)
         if proposal_re.match(ti):
