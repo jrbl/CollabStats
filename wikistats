@@ -33,6 +33,7 @@ from EasyIO import *         # ewriteln, owriteln, ewrite, owrite, DEBUG_ERR, DE
 VERBOSE    = False
 YAML_DATA  = None
 YAML_INDEX = None
+DATES_IN_DATASET = None
 
 HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
@@ -120,6 +121,18 @@ def lookupOrAdd(name):
         real = ''
     if real == '': return name
     else:          return real
+
+def buildDatesInDataset(dom):
+    """Build a cache of the list of pairs of the dates in the dataset.
+    
+    If the cache exists, return.
+
+    Cf. monthTimeStampList
+    """
+    global DATES_IN_DATASET
+    if DATES_IN_DATASET == None:
+        DATES_IN_DATASET = monthTimestampList(dom)
+    return 
 
 def buildEventIndex(event_stream):
     event_index = {}
@@ -453,11 +466,16 @@ def proposalCounts(page_index, wikiDOM):
     # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
     DEBUG_ERR("Starting proposal-based processing...", unicode(datetime.now())+' ')
     totals = datesAndCountsForPagesRevised(timestampList(wikiDOM), page_index)
+    buildDatesInDataset(wikiDOM)
+    if DATES_IN_DATASET == None:
+        raise Exception, "Date cache initialization failed."
     for title in sorted(page_index.keys()):
         pg_ref = page_index[title]
         edcnts = pageCountedEditorList(pg_ref)
-        output = [title, totals['TOTALS'][title], len(edcnts.keys())]       # Name, Edits, Unique Editors
-        for year, month in monthTimestampList(wikiDOM):                     # Total Active Editors per Month (Active = 5+ Edits)
+        edcnt_keys = edcnts.keys()
+        output = [title, totals['TOTALS'][title], len(edcnt_keys)]          # Name, Edits, Unique Editors
+        #for year, month in monthTimestampList(wikiDOM):                    # Total Active Editors per Month (Active = 5+ Edits)
+        for year, month in DATES_IN_DATASET:                                # Total Active Editors per Month (Active = 5+ Edits)
             edcounts = {}
             for rev in pg_ref.getElementsByTagName('revision'):
                 editor = getRevEditor((None, rev), False)
@@ -468,9 +486,10 @@ def proposalCounts(page_index, wikiDOM):
                 if editor in edcounts: edcounts[editor] += 1
                 else: edcounts[editor] = 1
             output.append( sum([1 for x in edcounts if edcounts[x] >= 5]) )
-        for year, month in monthTimestampList(wikiDOM):                     # New Editors per Month ...
+        #for year, month in monthTimestampList(wikiDOM):                    # New Editors per Month ...
+        for year, month in DATES_IN_DATASET:                                # New Editors per Month ...
             counter = 0
-            for editor in edcnts.keys():
+            for editor in edcnt_keys:
                 if edNewInMonth(year, month, activeMonths(pg_ref, editor)):
                     counter += 1
             output.append(counter)
@@ -526,10 +545,15 @@ def getEditorCSVHeaders():
 
 def getPageCSVHeaders(wikiDOM):
     # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
+    buildDatesInDataset(wikiDOM)
+    if DATES_IN_DATASET == None:
+        raise Exception, "Date cache initialization failed."
     output = ["Page Name", "Total Edits", "Total Unique Editors"]
-    for year, month in monthTimestampList(wikiDOM):                     # Total Active Editors per Month (Active = 5+ Edits)
+    #for year, month in monthTimestampList(wikiDOM):                    # Total Active Editors per Month (Active = 5+ Edits)
+    for year, month in DATES_IN_DATASET:                                # Total Active Editors per Month (Active = 5+ Edits)
         output.append("Active (5+) Eds %s-%s" % (unicode(year), unicode(month)))
-    for year, month in monthTimestampList(wikiDOM):                     # New Editors per Month ...
+    #for year, month in monthTimestampList(wikiDOM):                    # New Editors per Month ...
+    for year, month in DATES_IN_DATASET:                                # New Editors per Month ...
         output.append("New Eds %s-%s" % (unicode(year), unicode(month)))
     for date in timestampList(wikiDOM):                                 # Total Edits per day ...
         output.append("Eds %s" % unicode(date))
