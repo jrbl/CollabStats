@@ -28,7 +28,7 @@ import re
 import difflib
 
 from DictDB import DictDB
-from EasyIO import *         # ewriteln, owriteln, ewrite, owrite, VERBOSE_OUT, DEBUG_OUT
+from EasyIO import *         # ewriteln, owriteln, ewrite, owrite, DEBUG_ERR, DEBUG_ERR
 
 VERBOSE    = False
 YAML_DATA  = None
@@ -39,14 +39,14 @@ HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
 # Utility Functions
 def getDOM(filename):
-    VERBOSE_OUT("Reading XML Dump into memory...", unicode(datetime.now())+' ')
+    DEBUG_ERR("Reading XML Dump into memory...", unicode(datetime.now())+' ')
     #import codecs
     #f = codecs.open(filename, 'rb', encoding='utf-8')
     dd = md.parse(filename)
     if dd.documentElement.tagName != u'mediawiki':
         print "%s does not appear to be a MediaWiki dump.  Skipping..." % filename
         sys.exit()
-    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
     return dd
 
 def wikiPages(wikiDOM):
@@ -330,7 +330,6 @@ def summaryCountsByDate(event_index):
     proposal_re = re.compile(proposal_re_str)
     non_content_re = re.compile(non_content_re_str)
 
-    debugnames = {'DEFAULT': {}}   #####DEBUG
     for date in sorted(event_index.keys()):
         good_content     = False
         output = [unicode(date.date())]
@@ -364,22 +363,6 @@ def summaryCountsByDate(event_index):
 
             good_content = True                            # One unskipped page on a date makes the date good
             total_content_pages[pagename] = date
-
-            ########################DEBUG
-            colon = pagename.find(':')
-            if colon != -1:
-                namespace = pagename[0:colon]
-                title = pagename[colon+1:]
-                if namespace in debugnames: 
-                    if title in debugnames[namespace]: debugnames[namespace][title] += 1
-                    else: debugnames[namespace][title] = 1
-                else: debugnames[namespace] = {title : 1}
-            else:
-                namespace = 'DEFAULT'
-                title = pagename
-                if title in debugnames[namespace]: debugnames[namespace][title] += 1
-                else: debugnames[namespace][title] = 1
-            ########################DEBUG
 
             for editor in editorList(revlist, True):
                 if editor not in registered_users:
@@ -427,14 +410,9 @@ def summaryCountsByDate(event_index):
         output.append( eds5_today_str )
         yield output
 
-    ########################
-    for ns in debugnames.keys():
-        ewriteln("%s, %s" % (ns, len(debugnames[ns].keys())), 'DEBUG: ')
-    ########################
-
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
-    VERBOSE_OUT("Starting editor-by-editor processing", unicode(datetime.now())+' ')
+    DEBUG_ERR("Starting editor-by-editor processing", unicode(datetime.now())+' ')
     debug_revs2go = sum([len(v) for v in editor_index.values()])
     debug_counter = 0
     debug_2pct = debug_revs2go/50
@@ -469,11 +447,11 @@ def editorCounts(editor_index):
 
         output.extend( (len(revlist), pages_created, avg_edit_count_per_revision, avg_edit_size) )
         yield output
-    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
 
 def proposalCounts(page_index, wikiDOM):
     # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
-    VERBOSE_OUT("Starting proposal-based processing...", unicode(datetime.now())+' ')
+    DEBUG_ERR("Starting proposal-based processing...", unicode(datetime.now())+' ')
     totals = datesAndCountsForPagesRevised(timestampList(wikiDOM), page_index)
     for title in sorted(page_index.keys()):
         pg_ref = page_index[title]
@@ -499,7 +477,7 @@ def proposalCounts(page_index, wikiDOM):
         for date in timestampList(wikiDOM):                                 # Total Edits per day ...
             output.append(totals[date][title])
         yield output
-    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
 
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
@@ -583,9 +561,9 @@ def read_yaml(filename):
     global YAML_DATA
     global YAML_INDEX
     YAML_DATA = DictDB(filename, format='yaml', verbose=VERBOSE)
-    VERBOSE_OUT("Building index...", unicode(datetime.now()))
+    DEBUG_ERR("Building index...", unicode(datetime.now()))
     YAML_INDEX = wikinameIndexFromYAML()
-    VERBOSE_OUT("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
     return YAML_DATA, YAML_INDEX
 
 def close_yaml(filename):
