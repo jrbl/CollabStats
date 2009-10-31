@@ -29,42 +29,75 @@ from datetime import datetime
 
 from UserStats import UserStats
 
-def ircLower(s):
-    """Convert the input string to all-lower-case, with attempts to respect RFC 2812 s2.2"""
-    s = s.lower()
-    s.replace('[', '{')
-    s.replace(']', '}')
-    s.replace('\\', '|')
-    s.replace('~', '^')
-    return s
+class PlainTextIRCParser(object):
 
-def getUserStatsForNick(irc_nick, userTable, logStartTime):
-    """Checks whether we've ever seen this nick and returns the corresponding user"""
+    def __init__(self, logfile_object, user_table):
+        self.log = logfile_object
+        self.user_table = user_table
+        self.res = {
+            'time': re.compile("^\(\[\d{4}-\d{2}-\d{2} \d{2}::\d{2}:\d{2}]\)"),               #[2009-07-21 12::33:42]
+            'nick': re.compile("] \([a-zA-Z\[\]_\\`^{}|][0-9a-zA-Z\[\]_\\`^{}|\-]*\): "),     #] nickname: text
+        }
+        self.fils = {
+            'time': [self._regex2datetime, "[%Y-%m%-%d %H::%M:%S]"],
+            'nick': [self._getIRCnick, ],
+        }
+        self.start_time = None
+        self.end_time = None
 
-    if irc_nick not in userTable:
-        userTable[irc_nick] = UserStats(irc_nick, logStartTime, userTable.getID())
+    def _regex2datetime(self, match_obj, timestrl):
+        return datetime.strptime(match_obj.group(), timestrl[0])
 
-    return userTable[irc_nick]
+    def _getIRCnick(self, match_obj, empty = None):
+        return self._ircLower(match_obj.group)
 
-def handleLogDOM(dom, userTable):
-    """Process the elements in a colloquy log DOM"""
-    logStartTime = datetime.strptime(dom.getAttribute('began')[:19], "%Y-%m-%d %H:%M:%S")
-    logEndTime = None
-    for child in dom.childNodes:
-        if child.nodeName == u"envelope":         # one or more lines from a user
-            logEndTime = handleEnvelope(child, userTable, logStartTime)
-        elif child.nodeName == "#text":
-            for c in child.data:
-                if c not in '\t\n\x0b\x0c\r ':
-                    print "Unexpected text node: \"" + str(child.data) + "\""
-                    print "continuing..."
-        elif child.nodeName == u"event":          # IRC server event
-            logEndTime = handleEvent(child, userTable, logStartTime)
-        else:                                    # violates log spec
-            raise NotSupportedError, "Unknown child node " + child.tagName
+    def _ircLower(self, s):
+        """Convert the input string to all-lower-case, with attempts to respect RFC 2812 s2.2"""
+        s = s.lower()
+        s.replace('[', '{')
+        s.replace(']', '}')
+        s.replace('\\', '|')
+        s.replace('~', '^')
+        return s
 
-    for user in userTable.keys():
-        userTable[user].part(logEndTime)
+    def _match_and_apply(self, key, str):
+        regex = self.res[key]
+        m = regex.match(str)
+        if m != None:
+            return self._apply_filter(key, m)
+
+    def _apply_filter(self, key, match_object):
+        func = self.fils[key][0]
+        args = self.fils[key][1:]
+        return func(match_object, args)
+
+    def process(self, userTable):
+        first = self.log.readline()
+        self.start_time = self._match_and_apply('time', first)
+        dispatch_to_handler(first)
+        for line in self.log.readlines():
+            self.end_time = self.dispatch_to_handler(line)
+        for user in userTable.keys():
+            userTable[user].part(self.end_time)
+
+    def dispatch_to_handler(self, line):
+        """Given a line of text, figures out what handler to use on it"""
+        dt   = self._match_and_apply('time', line)
+        nick = self._match_and_apply('nick', line)
+        if nick == None:
+           # server msg, action or event
+           raise Exception, "Not implemented.  FIXME XXX HACK" # FIXME XXX HACK
+        else:
+            end = self.handle_message(dt, nick, line)
+        return end
+
+    def handle_message(date, nick, line):
+        """Book an irc message to a particular user nick"""
+        raise Exception, "Not implemented" # FIXME XXX HACK
+        user_object = None
+        text_offset = nick.span()[1]+1
+        msg = line[text_offset:]
+        user_object.message(date, msg)
 
 def handleEnvelope(child, userTable, logStartTime):
     """Pick the relevant data off of a blob of messages from a single user."""
@@ -88,6 +121,43 @@ def handleEnvelope(child, userTable, logStartTime):
 
         logEndTime = timestamp
     return logEndTime
+
+def handleLogDOM(dom, userTable):
+    """Process the elements in a colloquy log DOM"""
+    logStartTime = datetime.strptime(dom.getAttribute('began')[:19], "%Y-%m-%d %H:%M:%S")
+    logEndTime = None
+    for child in dom.childNodes:
+        if child.nodeName == u"envelope":         # one or more lines from a user
+            logEndTime = handleEnvelope(child, userTable, logStartTime)
+        elif child.nodeName == "#text":
+            for c in child.data:
+                if c not in '\t\n\x0b\x0c\r ':
+                    print "Unexpected text node: \"" + str(child.data) + "\""
+                    print "continuing..."
+        elif child.nodeName == u"event":          # IRC server event
+            logEndTime = handleEvent(child, userTable, logStartTime)
+        else:                                    # violates log spec
+            raise NotSupportedError, "Unknown child node " + child.tagName
+
+    for user in userTable.keys():
+        userTable[user].part(logEndTime)
+
+def ircLower(s):
+    """Convert the input string to all-lower-case, with attempts to respect RFC 2812 s2.2"""
+    s = s.lower()
+    s.replace('[', '{')
+    s.replace(']', '}')
+    s.replace('\\', '|')
+    s.replace('~', '^')
+    return s
+
+def getUserStatsForNick(irc_nick, userTable, logStartTime):
+    """Checks whether we've ever seen this nick and returns the corresponding user"""
+
+    if irc_nick not in userTable:
+        userTable[irc_nick] = UserStats(irc_nick, logStartTime, userTable.getID())
+
+    return userTable[irc_nick]
 
 def handleMessageNotice(user_object, timestamp, message):
     print "------------------------------------------------------------------------------"

@@ -68,7 +68,7 @@ def dailyStatsForUser(userTable, id, eco, daylist):
 
     name = userTable.idToName(id)
     user_object = userTable[id]
-    t_msgs, t_acts = reduce( (lambda x,y: (x[0] + y[0], x[1] + y[1])) , [eco[day] for day in daylist])
+    t_msgs, t_acts = reduce( (lambda x,y: (x[0] + y[0], x[1] + y[1])) , [eco[day] for day in daylist], (0, 0) )
 
     retVal = [ id, name ]
     retVal.extend( summary( count_messages(user_object), t_msgs, count_actions(user_object), t_acts ) )
@@ -168,8 +168,8 @@ def setup_optparse():
                       help="Output message counts per username")
     parser.add_option('-a', "--actions",  dest="actions",  action="store_true", default=False, 
                       help="Output action counts per username")
-    parser.add_option('-l', "--lurkers",  dest="lurkers",  action="store_true", default=False, 
-                      help="Output list of lurkers - users who don't say anything")
+#    parser.add_option('-l', "--lurkers",  dest="lurkers",  action="store_true", default=False, 
+#                      help="Output list of lurkers - users who don't say anything")
     parser.add_option('-d', "--debug",    dest="debug",    action="store_true", default=False, 
                       help="Enable debug mode")
     parser.add_option('-y', '--yaml-file', dest="yaml_file", action="store", metavar="FILE",
@@ -198,12 +198,12 @@ if __name__ == "__main__":
     if options.yaml_file:
         mapping_yaml = options.yaml_file
     else:
-        print "Usernames mapping YAML file unspecified; defaulting to 'usernames.yaml'..."
+        sys.stderr.write("Usernames mapping YAML file unspecified; defaulting to 'usernames.yaml'...\n")
         mapping_yaml = "usernames.yaml"
     if options.stats_file:
         stats_cache = options.stats_file
     else:
-        print "Stats cache file unspecified; defaulting to 'irc_users.pickle'..."
+        sys.stderr.write("Stats cache file unspecified; defaulting to 'irc_users.pickle'...\n")
         stats_cache = "ircusers.pickle"
 
     # Read in on-disk data stores; set up mapping dictionaries
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     for filename in args:
         dom = md.parse(filename)                           # should be in InputCollquyIRC.py?
         if dom.documentElement.tagName != u"log":
-            print "'%s' does not appear to be a Colloquy IRC transcript file.  Skipping..." % filename
+            sys.stderr.write("'%s' does not appear to be a Colloquy IRC transcript file.  Skipping...\n" % filename)
             continue
         handleLogDOM(dom.documentElement, userTable)
         dirty_data = True
@@ -236,7 +236,7 @@ if __name__ == "__main__":
             m, a = everything_counted_once[day]
             print "%10s %10s %10s" % (str(day), str(m), str(a) )
 
-    if options.messages or options.actions or options.lurkers or options.csv:
+    if options.messages or options.actions or options.csv: # or options.lurkers:
         allTheStats = [dailyStatsForUser(userTable, id, everything_counted_once, daylist) for id in userTable]
 
         if options.messages:
@@ -251,29 +251,29 @@ if __name__ == "__main__":
             for line in userStatsByLine(4, allTheStats, userTable):
                 print line
 
-        if options.lurkers:
-            options.csv = False
-            # FIXME: it thinks people who weren't present on a particular day are lurkers
-            header = "Lurkers and Action-only Users:\n"
-            header += "%20s  " % "Name"
-            for day in daylist:
-                header += "%10s  " % str(day)
-            print header
-            for line in allTheStats:
-                def allTrue(l):
-                    for t in l:
-                        if not t: return False
-                    return True
-                name = line[1]
-                line = line[6:]
-                if allTrue([line[i] > 0 for i in range(0, len(line), 4)]): continue
-                pairs = zip([line[i] for i in range(1, len(line), 4)], [line[i] for i in range(3, len(line), 4)])
-                line = "%20s  " % name
-                for pair in pairs:
-                    if pair[0] == 0 and pair[1] == 0: line += "%10s  " % "L"
-                    elif pair[0] == 0: line += "%10s  " % "s"
-                    else: line += "%10s  " % " "
-                print line
+#        if options.lurkers:
+#            options.csv = False
+#            # FIXME: it thinks people who weren't present on a particular day are lurkers
+#            header = "Lurkers and Action-only Users:\n"
+#            header += "%20s  " % "Name"
+#            for day in daylist:
+#                header += "%10s  " % str(day)
+#            print header
+#            for line in allTheStats:
+#                def allTrue(l):
+#                    for t in l:
+#                        if not t: return False
+#                    return True
+#                name = line[1]
+#                line = line[6:]
+#                if allTrue([line[i] > 0 for i in range(0, len(line), 4)]): continue
+#                pairs = zip([line[i] for i in range(1, len(line), 4)], [line[i] for i in range(3, len(line), 4)])
+#                line = "%20s  " % name
+#                for pair in pairs:
+#                    if pair[0] == 0 and pair[1] == 0: line += "%10s  " % "L"
+#                    elif pair[0] == 0: line += "%10s  " % "s"
+#                    else: line += "%10s  " % " "
+#                print line
 
         if options.csv:
             import csv, sys
