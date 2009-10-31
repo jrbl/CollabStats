@@ -40,15 +40,17 @@ HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
 
 # Utility Functions
+getWallTime = datetime.now
+
 def getDOM(filename):
-    DEBUG_ERR("Reading XML Dump into memory...", unicode(datetime.now())+' ')
+    DEBUG_ERR("Reading XML Dump into memory...", unicode(getWallTime())+' ')
     #import codecs
     #f = codecs.open(filename, 'rb', encoding='utf-8')
     dd = md.parse(filename)
     if dd.documentElement.tagName != u'mediawiki':
         print "%s does not appear to be a MediaWiki dump.  Skipping..." % filename
         sys.exit()
-    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(getWallTime())+' ')
     return dd
 
 def wikiPages(wikiDOM):
@@ -76,16 +78,21 @@ def getElementText(element):
 def getPageTitleText(page):
     return getElementText(page.getElementsByTagName('title')[0])
 
-def dateTimeStr(dt_string):
-    return datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%sZ")
+#def dateTimeStr(dt_string):
+#    return datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%sZ")
 
-def dateStrOnly(dt_string):
-    return datetime.strptime(dt_string[:10], "%Y-%m-%d")
+#def dateStrOnly(dt_string):
+#    return datetime.strptime(dt_string[:10], "%Y-%m-%d")
+
+def dateTupOnly(dt_string):
+    """Convert a string with an ISO date into a tuple of year, month, day."""
+    return (dt_string[:4], dt_string[5:7], dt_string[8:10])
 
 def eventStream(wikiDOM):
     times = wikiDOM.getElementsByTagName('timestamp')
     for t in times:
-        dt = dateStrOnly(t.firstChild.nodeValue)
+        #dt = dateStrOnly(t.firstChild.nodeValue)
+        dt = dateTupOnly(t.firstChild.nodeValue)
         rev = t.parentNode
         pg = t.parentNode.parentNode
         yield (dt, t, rev, pg)
@@ -95,12 +102,12 @@ def editorStream(wikiDOM):
     for e in editors:
         ed = lookupOrAdd(getElementText(e))
         rev = e.parentNode.parentNode
-        dt = dateStrOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
+        #dt = dateStrOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
+        dt = dateTupOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         yield (ed, rev, dt)
 
 def proposalStream(wikiDOM):
     pages       = wikiDOM.getElementsByTagName('page')
-    #proposal_re = re.compile("^(Proposal:)|(Proposals/)")
     proposal_re = re.compile("^Proposal")
     for p in pages:
         ti = getPageTitleText(p)
@@ -292,10 +299,11 @@ def activeMonths(page, editor):
         if ed != editor: continue
         time = rev.getElementsByTagName('timestamp')
         if len(time) == 0: continue
-        time = dateStrOnly(time[0].firstChild.nodeValue)
-        if time.year not in active: 
-            active[time.year] = [False] * 12
-        active[time.year][time.month] = True
+        #time = dateStrOnly(time[0].firstChild.nodeValue)
+        time = dateTupOnly(time[0].firstChild.nodeValue)
+        if time[0] not in active: 
+            active[time[0]] = [False] * 12
+        active[time[0]][time[1]] = True
     return active
 
 def edNewInMonth(yr, mo, active):
@@ -313,7 +321,7 @@ def timestampList(wikiDOM):
     """Returns a list of every timestamp represented in the data set.
        
     XXX: Makes no attempt to do gap detection."""
-    allTimes = [dateStrOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp')]
+    allTimes = [dateTupOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp')]
     return sorted(list(set(allTimes)))
 
 def monthTimestampList(wikiDOM):
@@ -321,7 +329,6 @@ def monthTimestampList(wikiDOM):
     global TIME_STAMP_LIST
     if TIME_STAMP_LIST == None:
         TIME_STAMP_LIST = timestampList(wikiDOM)
-    #allTimes = [dateStrOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp')]
     allTimes = [(t.year, t.month) for t in TIME_STAMP_LIST]
     return sorted(list(set(allTimes)))
 
@@ -333,12 +340,15 @@ def datesAndCountsForPagesRevised(time_list, page_list):
         counts['TOTALS'] = {}
     for title in page_list:
         for t in time_list:
-            counts[t][title] = 0
+            ts = '-'.join(t)
+            counts[ts][title] = 0
         counts['TOTALS'][title] = 0
         pgref = page_list[title]
-        pageDates = [dateStrOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
+        #pageDates = [dateStrOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
+        pageDates = [dateTupOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
         for d in pageDates:
-            counts[d][title] += 1
+            ds = '-'.join(d)
+            counts[ds][title] += 1
             counts['TOTALS'][title] += 1
     return counts
 
@@ -443,7 +453,7 @@ def summaryCountsByDate(event_index):
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
-    DEBUG_ERR("Starting editor-by-editor processing", unicode(datetime.now())+' ')
+    DEBUG_ERR("Starting editor-by-editor processing", unicode(getWallTime())+' ')
     debug_revs2go = sum([len(v) for v in editor_index.values()])
     debug_counter = 0
     debug_2pct = debug_revs2go/50
@@ -478,13 +488,11 @@ def editorCounts(editor_index):
 
         output.extend( (len(revlist), pages_created, avg_edit_count_per_revision, avg_edit_size) )
         yield output
-    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(getWallTime())+' ')
 
 def proposalCounts(page_index, wikiDOM):
-    # Proposal Page Name, Total Edits, Total Unique Editors, Total Active Editors/Mo, ... , New Editors/Mo, Total Edits/Day01, ...
-    DEBUG_ERR("Starting proposal-based processing...", unicode(datetime.now())+' ')
+    DEBUG_ERR("Starting proposal-based processing...", unicode(getWallTime())+' ')
     buildDateCache(wikiDOM)
-    #totals = datesAndCountsForPagesRevised(timestampList(wikiDOM), page_index)
     totals = datesAndCountsForPagesRevised(TIME_STAMP_LIST, page_index)
     for title in sorted(page_index.keys()):
         pg_ref = page_index[title]
@@ -495,10 +503,11 @@ def proposalCounts(page_index, wikiDOM):
             edcounts = {}
             for rev in pg_ref.getElementsByTagName('revision'):
                 editor = getRevEditor((None, rev), False)
-                timestamp = dateStrOnly(rev.getElementsByTagName('timestamp')[0].firstChild.nodeValue)
+                #timestamp = dateStrOnly(rev.getElementsByTagName('timestamp')[0].firstChild.nodeValue)
+                timestamp = dateTupOnly(rev.getElementsByTagName('timestamp')[0].firstChild.nodeValue)
                 if editor == None: continue
-                if timestamp.year != year: continue
-                if timestamp.month != month: continue
+                if timestamp[0] != year: continue
+                if timestamp[1] != month: continue
                 if editor in edcounts: edcounts[editor] += 1
                 else: edcounts[editor] = 1
             output.append( sum([1 for x in edcounts if edcounts[x] >= 5]) )
@@ -508,11 +517,10 @@ def proposalCounts(page_index, wikiDOM):
                 if edNewInMonth(year, month, activeMonths(pg_ref, editor)):
                     counter += 1
             output.append(counter)
-        #for date in timestampList(wikiDOM):                                 # Total Edits per day ...
         for date in TIME_STAMP_LIST:                                         # Total Edits per day ...
             output.append(totals[date][title])
         yield output
-    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(getWallTime())+' ')
 
 def getSummaryCSVHeaders():
     """return the names for the header line for a csv file.  Defined below.
@@ -597,9 +605,9 @@ def read_yaml(filename):
     global YAML_DATA
     global YAML_INDEX
     YAML_DATA = DictDB(filename, format='yaml', verbose=VERBOSE)
-    DEBUG_ERR("Building index...", unicode(datetime.now()))
+    DEBUG_ERR("Building index...", unicode(getWallTime()))
     YAML_INDEX = wikinameIndexFromYAML()
-    DEBUG_ERR("...done.", unicode(datetime.now())+' ')
+    DEBUG_ERR("...done.", unicode(getWallTime())+' ')
     return YAML_DATA, YAML_INDEX
 
 def close_yaml(filename):
