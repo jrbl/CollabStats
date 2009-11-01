@@ -53,12 +53,6 @@ def getDOM(filename):
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
     return dd
 
-def titles_revcounts(pages):
-    for page in pages:
-        title = page.getElementsByTagName('title')[0].firstChild.nodeValue
-        revCount = len(page.getElementsByTagName('revision'))
-        yield unicode(title).encode("utf8"), revCount
-
 def pageRevisions(page):
     for rev in page.getElementsByTagName('revision'):
         yield rev
