@@ -11,3 +11,4 @@ user_merges    - run to identify user information merge possibilities -
                  ircstats has been run at least once.
 wikistats      - Tries to answer interesting questions about wiki usage
                  Works with MediaWiki full dumps.
+ 
