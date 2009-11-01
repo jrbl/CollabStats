@@ -53,15 +53,6 @@ def getDOM(filename):
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
     return dd
 
-def wikiPages(wikiDOM):
-    for kid in wikiDOM.childNodes:
-        if kid.nodeName == u"#text":
-            continue
-        elif kid.nodeName == u"siteinfo":
-            continue
-        elif kid.nodeName == u"page":
-            yield kid
-
 def titles_revcounts(pages):
     for page in pages:
         title = page.getElementsByTagName('title')[0].firstChild.nodeValue
