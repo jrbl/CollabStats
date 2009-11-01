@@ -615,6 +615,12 @@ def addNameToYAML(name):      # NOT THREAD SAFE
 # Test Harness
 if __name__ == "__main__":
 
+    try:
+        import psyco
+        psyco.full()
+    except ImportError:
+        pass
+
     import optparse    
     usage = HELP_USAGE_EN
     parser = optparse.OptionParser(usage = usage)
