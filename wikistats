@@ -53,10 +53,6 @@ def getDOM(filename):
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
     return dd
 
-def pageRevisions(page):
-    for rev in page.getElementsByTagName('revision'):
-        yield rev
-
 def getElementText(element):
     return element.firstChild.nodeValue.encode("utf8")
 
@@ -350,6 +346,9 @@ def summaryCountsByDate(event_index):
     proposal_re = re.compile(proposal_re_str)
     non_content_re = re.compile(non_content_re_str)
 
+    DEBUG_REDIRECTS = 0
+    DEBUG_NOTREDIRECTS = 0
+
     for date in sorted(event_index.keys()):
         good_content     = False
         output = [unicode(date.date())]
@@ -379,7 +378,9 @@ def summaryCountsByDate(event_index):
                 continue                              
             if is_redirect(page):                          # also skip redirects
                 good_content = good_content
+                DEBUG_REDIRECTS += 1
                 continue
+            DEBUG_NOTREDIRECTS += 1
 
             good_content = True                            # One unskipped page on a date makes the date good
             total_content_pages[pagename] = date
@@ -426,6 +427,7 @@ def summaryCountsByDate(event_index):
                        ed_per_pg_avg, len(new_pages_today), len(eds10_today))  )
         output.append( eds10_today_str )
         yield output
+    print "Redirects: %s, Not Redirects: %s" % (DEBUG_REDIRECTS, DEBUG_NOTREDIRECTS)
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
