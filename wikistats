@@ -134,12 +134,13 @@ def buildEventIndex(event_stream):
     event_index = {}
     for eventTuple in event_stream:
         dt, ts, rev, pg = eventTuple
-        if dt not in event_index:
-            event_index[dt] = {pg: [(ts, rev)]}
-        elif pg not in event_index[dt]:
-            event_index[dt][pg] = [(ts, rev)]
+        dts = '-'.join(dt)
+        if dts not in event_index:
+            event_index[dts] = {pg: [(ts, rev)]}
+        elif pg not in event_index[dts]:
+            event_index[dts][pg] = [(ts, rev)]
         else: 
-            event_index[dt][pg].append( (ts, rev) )
+            event_index[dts][pg].append( (ts, rev) )
     return event_index
 
 def buildEditorIndex(editor_stream):
@@ -351,7 +352,7 @@ def summaryCountsByDate(event_index):
 
     for date in sorted(event_index.keys()):
         good_content     = False
-        output = [unicode(date.date())]
+        output = [date]
 
         proposals_edited     = 0
         new_proposals_today  = 0
