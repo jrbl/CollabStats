@@ -88,6 +88,20 @@ def proposalStream(wikiDOM):
         if proposal_re.match(ti):
             yield ti, p
 
+def allProposals(wikiDOM):
+    """Build a list pages matching "Proposal:" and "Proposal talk:"
+
+    Ignore redirects.  Sort by page title.
+    """
+    props = []
+    pages       = wikiDOM.getElementsByTagName('page')
+    proposal_re = re.compile("^Proposal:|^Proposal talk:")
+    for p in pages:
+        ti = getPageTitleText(p)
+        if proposal_re.match(ti):
+            props.append( (ti, p) )
+    return sorted(props)
+
 def lookupOrAdd(name):
     """Looks up name in YAML_DATA, adds it if its not present.
 
@@ -153,11 +167,11 @@ def buildEditorIndex(editor_stream):
             editor_index[ed].append( (dt, rev) )
     return editor_index
 
-def buildPageIndex(page_stream):
-    page_index = {}
-    for title, pgref in page_stream:
-        page_index[title] = pgref
-    return page_index
+#def buildPageIndex(page_stream):
+#    page_index = {}
+#    for title, pgref in page_stream:
+#        page_index[title] = pgref
+#    return page_index
 
 def getRevID(revision):
     return getElementText(revision.getElementsByTagName('id')[0])
@@ -311,20 +325,18 @@ def monthTimestampList(wikiDOM):
 def datesAndCountsForPagesRevised(time_list, page_list):
     """Return a dictionary counting how many revisions for each page are on each date."""
     counts = {}
-    for t in time_list:
-        ts = '-'.join(t)
-        counts[ts] = {}
+    times = ['-'.join(t) for t in time_list]
+    for t in times:
+        counts[t] = {}
         counts['TOTALS'] = {}
-    for title in page_list:
-        for t in time_list:
-            ts = '-'.join(t)
-            counts[ts][title] = 0
+    for title,pgref in page_list:
+        pageDates = ['-'.join(dateTupOnly(t.firstChild.nodeValue)) for t in pgref.getElementsByTagName('timestamp')]
+        for t in times:
+            counts[t][title] = 0
         counts['TOTALS'][title] = 0
-        pgref = page_list[title]
-        pageDates = [dateTupOnly(t.firstChild.nodeValue) for t in pgref.getElementsByTagName('timestamp')]
+        #pgref = page_list[title]
         for d in pageDates:
-            ds = '-'.join(d)
-            counts[ds][title] += 1
+            counts[d][title] += 1
             counts['TOTALS'][title] += 1
     return counts
 
@@ -469,12 +481,15 @@ def editorCounts(editor_index):
         yield output
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
 
-def proposalCounts(page_index, wikiDOM):
+#def proposalCounts(page_index, wikiDOM):
+def proposalCounts(prop_stream, wikiDOM):
     DEBUG_ERR("Starting proposal-based processing...", unicode(getWallTime())+' ')
     buildDateCache(wikiDOM)
-    totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, page_index)
-    for title in sorted(page_index.keys()):
-        pg_ref = page_index[title]
+    #totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, page_index)
+    totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, prop_stream)
+    #for title in sorted(page_index.keys()):
+    for title, pg_ref in prop_stream:
+        #pg_ref = page_index[title]
         edcnts = pageCountedEditorList(pg_ref)
         edcnt_keys = edcnts.keys()
         output = [title, totals['TOTALS'][title], len(edcnt_keys)]          # Name, Edits, Unique Editors
@@ -566,8 +581,13 @@ def statsEditors(dumpDOM, output=sys.stdout):
     csvOut(editorCounts(editor_index), output, header=getEditorCSVHeaders() ) 
 
 def statsProposals(dumpDOM, output=sys.stdout):
-    page_index = buildPageIndex(proposalStream(dumpDOM))
-    csvOut(proposalCounts(page_index, dumpDOM), output, header=getPageCSVHeaders(dumpDOM) )
+    #page_index = buildPageIndex(proposalStream(dumpDOM))
+    #csvOut(proposalCounts(page_index, dumpDOM), output, header=getPageCSVHeaders(dumpDOM) )
+    #page_index = buildPageIndex(proposalStream(dumpDOM))
+    csvOut( proposalCounts( allProposals(dumpDOM), 
+                            dumpDOM), 
+            output, 
+            header=getPageCSVHeaders(dumpDOM) )
 
 def csvOut(iterable, file_obj=sys.stdout, header=None):
     import csv
