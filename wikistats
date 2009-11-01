@@ -35,6 +35,7 @@ YAML_DATA  = None
 YAML_INDEX = None
 MONTHS_IN_DATASET = None
 DATE_STAMP_LIST = None
+SIBLING_REVISIONS = None
 
 HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
@@ -78,15 +79,6 @@ def editorStream(wikiDOM):
         rev = e.parentNode.parentNode
         dt = dateTupOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         yield (ed, rev, dt)
-
-def proposalStream(wikiDOM):
-    pages       = wikiDOM.getElementsByTagName('page')
-    #proposal_re = re.compile("^Proposal:")
-    proposal_re = re.compile("^Proposal:|^Proposal talk:")
-    for p in pages:
-        ti = getPageTitleText(p)
-        if proposal_re.match(ti):
-            yield ti, p
 
 def allProposals(wikiDOM):
     """Build a list pages matching "Proposal:" and "Proposal talk:"
@@ -167,35 +159,9 @@ def buildEditorIndex(editor_stream):
             editor_index[ed].append( (dt, rev) )
     return editor_index
 
-#def buildPageIndex(page_stream):
-#    page_index = {}
-#    for title, pgref in page_stream:
-#        page_index[title] = pgref
-#    return page_index
-
 def getRevID(revision):
-    return getElementText(revision.getElementsByTagName('id')[0])
-
-def hasFirstRev(revlist):
-    for rev in revlist:
-        if getRevID(rev[1]) == 1:
-            return True
-    return False
-
-def getLowestRev(revlist):
-    low = 9999999999
-    for rev in revlist:
-        id = getRevID(rev[1])
-        if id < low:
-            low = id
-    return low
-
-def sortedRevs(revlist):
-    def cmp(x, y):
-        if getRevID(x[1]) < getRevID(y[1]): return -1
-        elif getRevID(x[1]) == getRevID(y[1]): return 0
-        else: return 1
-    return sorted(revlist, cmp)
+    #return getElementText(revision.getElementsByTagName('id')[0])
+    return revision.getElementsByTagName('id')[0].firstChild.nodeValue.encode("utf8")
 
 def getRevEditor(rev, registered_only=False):
     """Given a (timestamp, revision) pair, determine the name of the revs author.
@@ -223,19 +189,30 @@ def getRevisionText(revision):
     except AttributeError:
         return ""
 
-def getPreviousRevision(revision):
-    my_id = getRevID(revision)
-    sibs = revision.parentNode.getElementsByTagName('revision')
+#def getPreviousRevision(revision):
+#    my_id = getRevID(revision)
+#    sibs = revision.parentNode.getElementsByTagName('revision')
+#    def cmp(x, y):
+#        if getRevID(x) < getRevID(y): return -1
+#        elif getRevID(x) > getRevID(y): return 1
+#        else: return 0
+#    sibs = sorted(sibs, cmp)
+#    for i in range(len(sibs)):
+#        if getRevID(sibs[i]) == my_id:
+#            if i == 0: return None
+#            return sibs[i -1]
+#    return None
+
+def getSiblingRevisions(revision):
     def cmp(x, y):
         if getRevID(x) < getRevID(y): return -1
         elif getRevID(x) > getRevID(y): return 1
         else: return 0
-    sibs = sorted(sibs, cmp)
-    for i in range(len(sibs)):
-        if getRevID(sibs[i]) == my_id:
-            if i == 0: return None
-            return sibs[i -1]
-    return None
+    global SIBLING_REVISIONS
+    if (SIBLING_REVISIONS == None) or (revision not in SIBLING_REVISIONS):
+        sibs = revision.parentNode.getElementsByTagName('revision')
+        SIBLING_REVISIONS = sorted(sibs, cmp)
+    return SIBLING_REVISIONS
 
 def diffTexts(a, b):
     ed_counter = 0
@@ -359,9 +336,6 @@ def summaryCountsByDate(event_index):
     proposal_re = re.compile(proposal_re_str)
     non_content_re = re.compile(non_content_re_str)
 
-    DEBUG_REDIRECTS = 0
-    DEBUG_NOTREDIRECTS = 0
-
     for date in sorted(event_index.keys()):
         good_content     = False
         output = [date]
@@ -391,9 +365,7 @@ def summaryCountsByDate(event_index):
                 continue                              
             if is_redirect(page):                          # also skip redirects
                 good_content = good_content
-                DEBUG_REDIRECTS += 1
                 continue
-            DEBUG_NOTREDIRECTS += 1
 
             good_content = True                            # One unskipped page on a date makes the date good
             total_content_pages[pagename] = date
@@ -440,7 +412,6 @@ def summaryCountsByDate(event_index):
                        ed_per_pg_avg, len(new_pages_today), len(eds10_today))  )
         output.append( eds10_today_str )
         yield output
-    print "Redirects: %s, Not Redirects: %s" % (DEBUG_REDIRECTS, DEBUG_NOTREDIRECTS)
 
 def editorCounts(editor_index):
     # { ed: [ ( dt, rev ), ( dt, rev ) ... ] }
@@ -457,6 +428,7 @@ def editorCounts(editor_index):
         edit_sizes = 0
 
         for dt, rev in revlist:
+            if rev in done_list: continue
 
             if VERBOSE:
                 if debug_counter % debug_2pct == 0: 
@@ -464,16 +436,20 @@ def editorCounts(editor_index):
                     sys.stderr.flush()
                 debug_counter += 1
 
-            prev = getPreviousRevision(rev)
-            if prev == None: 
+            sibs = getSiblingRevisions(rev)
+            index = sibs.index(rev)
+            #prev = getPreviousRevision(rev)
+            #if prev == None: 
+            if index == 0: 
                 prev_text = ''
                 pages_created += 1
-            else: prev_text = getRevisionText(prev)
+            #else: prev_text = getRevisionText(prev)
+            else: prev_text = getRevisionText(sibs[index - 1])
             cur_text = getRevisionText(rev)
             editCount, editSizes = diffTexts(prev_text, cur_text)
             edit_counts.append(editCount)
             edit_sizes += sum(editSizes)
-
+            
         avg_edit_count_per_revision = float(sum(edit_counts))/len(edit_counts)
         avg_edit_size = float(edit_sizes)/len(edit_counts) 
 
@@ -481,15 +457,11 @@ def editorCounts(editor_index):
         yield output
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
 
-#def proposalCounts(page_index, wikiDOM):
 def proposalCounts(prop_stream, wikiDOM):
     DEBUG_ERR("Starting proposal-based processing...", unicode(getWallTime())+' ')
     buildDateCache(wikiDOM)
-    #totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, page_index)
     totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, prop_stream)
-    #for title in sorted(page_index.keys()):
     for title, pg_ref in prop_stream:
-        #pg_ref = page_index[title]
         edcnts = pageCountedEditorList(pg_ref)
         edcnt_keys = edcnts.keys()
         output = [title, totals['TOTALS'][title], len(edcnt_keys)]          # Name, Edits, Unique Editors
@@ -581,9 +553,6 @@ def statsEditors(dumpDOM, output=sys.stdout):
     csvOut(editorCounts(editor_index), output, header=getEditorCSVHeaders() ) 
 
 def statsProposals(dumpDOM, output=sys.stdout):
-    #page_index = buildPageIndex(proposalStream(dumpDOM))
-    #csvOut(proposalCounts(page_index, dumpDOM), output, header=getPageCSVHeaders(dumpDOM) )
-    #page_index = buildPageIndex(proposalStream(dumpDOM))
     csvOut( proposalCounts( allProposals(dumpDOM), 
                             dumpDOM), 
             output, 
