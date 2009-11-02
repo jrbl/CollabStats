@@ -291,7 +291,9 @@ def timestampList(wikiDOM):
     """Returns a list of every timestamp represented in the data set.
        
     XXX: Makes no attempt to do gap detection."""
-    allTimes = [dateTupOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp')]
+    non_content_re = re.compile("^(Media:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)")
+    allTimes = [dateTupOnly(t.firstChild.nodeValue) for t in wikiDOM.getElementsByTagName('timestamp') if 
+                                                             non_content_re.match(getPageTitleText(t.parentNode.parentNode)) == None]
     return sorted(list(set(allTimes)))
 
 def monthTimestampList(wikiDOM):
@@ -462,11 +464,11 @@ def editorCounts(editor_index):
         yield output
     DEBUG_ERR("...done.", unicode(getWallTime())+' ')
 
-def proposalCounts(prop_stream, wikiDOM):
+def proposalCounts(prop_list, wikiDOM):
     DEBUG_ERR("Starting proposal-based processing...", unicode(getWallTime())+' ')
     buildDateCache(wikiDOM)
-    totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, prop_stream)
-    for title, pg_ref in prop_stream:
+    totals = datesAndCountsForPagesRevised(DATE_STAMP_LIST, prop_list)
+    for title, pg_ref in prop_list:
         edcnts = pageCountedEditorList(pg_ref)
         edcnt_keys = edcnts.keys()
         output = [title, totals['TOTALS'][title], len(edcnt_keys)]          # Name, Edits, Unique Editors
