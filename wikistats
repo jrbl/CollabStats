@@ -438,7 +438,6 @@ def editorCounts(editor_index):
         edit_sizes = 0
 
         for dt, rev in revlist:
-            if rev in done_list: continue
 
             if VERBOSE:
                 if debug_counter % debug_2pct == 0: 
