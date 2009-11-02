@@ -74,10 +74,13 @@ def eventStream(wikiDOM):
         yield (dt, t, rev, pg)
 
 def editorStream(wikiDOM):
+    non_content_re = re.compile("^(Media:)|(Special:)|(MediaWiki:)|(Category:)|(File:)|(Help:)|(Template:)")
     editors = wikiDOM.getElementsByTagName('username')
     for e in editors:
-        ed = lookupOrAdd(getElementText(e))
         rev = e.parentNode.parentNode
+        if non_content_re.match(getPageTitleText(rev.parentNode)):
+            continue
+        ed = lookupOrAdd(getElementText(e))
         dt = dateTupOnly(getElementText(rev.getElementsByTagName('timestamp')[0]))
         yield (ed, rev, dt)
 
