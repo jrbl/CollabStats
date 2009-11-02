@@ -36,6 +36,7 @@ YAML_INDEX = None
 MONTHS_IN_DATASET = None
 DATE_STAMP_LIST = None
 SIBLING_REVISIONS = None
+REDIRECT_LIST = None
 
 HELP_USAGE_EN = """usage: %prog [wikidump.xml] [usernames.yaml]"""
 
@@ -89,6 +90,8 @@ def allProposals(wikiDOM):
     pages       = wikiDOM.getElementsByTagName('page')
     proposal_re = re.compile("^Proposal:|^Proposal talk:")
     for p in pages:
+        if is_redirect(p):
+            continue
         ti = getPageTitleText(p)
         if proposal_re.match(ti):
             props.append( (ti, p) )
@@ -318,9 +321,11 @@ def datesAndCountsForPagesRevised(time_list, page_list):
     return counts
 
 def is_redirect(page):
-    if len(page.getElementsByTagName('redirect')) == 0:
-        return False
-    return True
+    global REDIRECT_LIST
+    if REDIRECT_LIST == None:
+        redirects =  page.parentNode.getElementsByTagName('redirect')
+        REDIRECT_LIST = [redirect.parentNode for redirect in redirects]
+    return page in REDIRECT_LIST
 
 def summaryCountsByDate(event_index):
     total_pages         = {}
