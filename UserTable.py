@@ -94,6 +94,13 @@ class UserTable(object):
             return self.__userObjectTable[key]
         elif key in self.__commonNames:
             return self.__userObjectTable[ self.__commonNames[ key ] ]
+        # Not found.  Perhaps the key is case-sensitive.
+        # Try title-casing.  XXX
+        key = key.title()
+        if key in self.__userObjectTable:
+            return self.__userObjectTable[key]
+        elif key in self.__commonNames:
+            return self.__userObjectTable[ self.__commonNames[ key ] ]
         else:
             raise KeyError, "No such UUID or nick: '" + str(key) + "'"
 
@@ -116,7 +123,7 @@ class UserTable(object):
     def __contains__(self, key):
         return (key in self.__userObjectTable) or (key in self.__commonNames)
 
-    def merge(self, primary, secondary, no_retry = False):
+    def merge(self, primary, secondary):
         """Dereferences primary and secondary and copies secondary's data to primary."""
         pobj = self[primary]
         pid = pobj.id
@@ -130,16 +137,40 @@ class UserTable(object):
             except TypeError:
                 return max(a, b)
 
-        # yaml differences
-        for feature in self.__yaml_data[pid].keys():
-            if isinstance(self.__yaml_data[pid][feature], list):
-                fnames = set(self.__yaml_data[pid][feature])
-                for item in self.__yaml_data[sid][feature]:
-                    fnames.add(item)
-                self.__yaml_data[pid][feature] = list(fnames)
-            else:
-                self.__yaml_data[pid][feature] = biggest(self.__yaml_data[pid][feature], 
-                                                         self.__yaml_data[pid][feature])
+        try:
+            features = list(set(self.__yaml_data[pid].keys() + self.__yaml_data[sid].keys()))
+        except KeyError:
+            # FIXME: this makes it possible to merge serialized data to freshly created objects.
+            # BUT! it only works if the freshly created object is secondary!
+            features = self.__yaml_data[pid].keys()
+
+        for feature in features:
+            featp = None
+            feats = None
+            try:
+                feats = self.__yaml_data[sid][feature]
+            except KeyError:
+                continue
+            try: 
+                featp = self.__yaml_data[pid][feature]
+            except KeyError:
+                self.__yaml_data[pid][feature] = feats
+                continue
+            if isinstance(featp, list):
+                self.__yaml_data[pid][feature] = list(set(feats + featp))
+                continue
+            self.__yaml_data[pid][feature] = biggest(feats, featp)
+
+        ## yaml differences
+        #for feature in self.__yaml_data[pid].keys():
+        #    if isinstance(self.__yaml_data[pid][feature], list):
+        #        fnames = set(self.__yaml_data[pid][feature])
+        #        for item in self.__yaml_data[sid][feature]:
+        #            fnames.add(item)
+        #        self.__yaml_data[pid][feature] = list(fnames)
+        #    else:
+        #        self.__yaml_data[pid][feature] = biggest(self.__yaml_data[pid][feature], 
+        #                                                 self.__yaml_data[sid][feature])
 
         # pickle differences
         candidate = set(filter(None, pobj.nicks))
@@ -158,20 +189,34 @@ class UserTable(object):
             self.__commonNames[name] = pid
 
         # delete secondary
-        del(sobj)
-        del(self.__userObjectTable[sid])
-        del(self.__yaml_data[sid])
+        try:
+            del(sobj)
+            del(self.__userObjectTable[sid])
+            del(self.__yaml_data[sid])
+        except KeyError:
+            # NB: see above re: merging fresh objects to serialized ones
+            pass
 
     def write_yaml(self, yaml_file=None):
         """Write out a yaml file reflecting the current state of the user tables."""
-        new_yaml_data = {}
         for key in self.__userObjectTable.keys():
             if key not in self.__yaml_data:
                 self.__yaml_data[key] = self.yamlifyUserStats(self.__userObjectTable[key])
         self.__yaml_data.sync(yaml_file)
 
-    def close(self):
+    def clean(self, dirty_list):
+        """Go through dirty_list updating list field types in self.__yaml_data"""
+        for data_key, yaml_key, addition in dirty_list:
+            #print "self.__yaml_data[%s][%s].append(%s) = %s" % (data_key, yaml_key, addition, 
+            #                                                   self.__yaml_data[data_key][yaml_key])
+            self.__yaml_data[data_key][yaml_key].append(addition)
+            #print "self.__yaml_data[%s][%s].append(%s) = %s" % (data_key, yaml_key, addition, 
+            #                                                   self.__yaml_data[data_key][yaml_key])
+
+    def close(self, dirty_list = None):
         """Write out our data files"""
+        if dirty_list:
+           self.clean(dirty_list)
         self.write_yaml()
         self.__userObjectTable.sync()
 

@@ -24,6 +24,7 @@ FIXME: should also provide merge functionality
 import os, sys
 
 from UserTable import UserTable
+from UserStats import UserStats
 
 
 HELP_USAGE_EN = """usage: %prog [usernames.yaml] [irc_users.pickle]
@@ -31,8 +32,13 @@ HELP_USAGE_EN = """usage: %prog [usernames.yaml] [irc_users.pickle]
 Interactively scans user data files, suggesting possible merges and asking for permission."""
 
 
-def match_report(userTable, n1, n1_mergelist, verbose=False):
+#def match_report(userTable, n1, n1_mergelist, verbose=False):
+def match_report(n1, n1_mergelist, verbose=False):
     """Returns a nice report suggesting that n1_mergelist be merged to n1."""
+    #if n1 == "cary":
+    #    print "DEBUG: n1 = ", n1
+    #    print "DEBUG: n1_mergelist = ", n1_mergelist
+    #    print "DEBUG: nicks = ", userTable[n1_mergelist[0]].nicks
     # FIXME: make verbose do something.
     s = "The records on the right appear to be similar to the record on the left.\n"
     s += "You may want to consider merging them:\n"
@@ -89,10 +95,14 @@ def ircSorted(nick_list):
             return cmp(x, y)
 
     for names in nick_list:
-
         names = [ircLower(name) for name in names]
         names.sort(irc_cmp)
         yield names
+
+def confirm(text, aff='y'):
+    selection = raw_input(text)
+    if len(selection) < 1: return False
+    return selection.lower()[0] == aff
 
 def possible_wikiMerge(cnames, userTable):
     yaml = userTable._UserTable__yaml_data         # XXX: Acknowledged to be dangerous
@@ -128,9 +138,10 @@ def possible_wikiMerge(cnames, userTable):
 
     for suggestion in suggestions:
         print id_match_report(userTable, suggestion[0], suggestion[1])
-        selection = raw_input("merg?  y/N  -> ")
-        if len(selection) < 1: continue
-        if selection.lower()[0] == 'y':
+        #selection = raw_input("merg?  y/N  -> ")
+        #if len(selection) < 1: continue
+        #if selection.lower()[0] == 'y':
+        if confirm("merge?  y/N  -> "):
             yield suggestion
 
 def possible_merges(c_names, userTable):
@@ -160,10 +171,12 @@ def possible_merges(c_names, userTable):
         
         # we've got possible matches, now ask user to confirm, then yield them
         if ( len(n1_mergelist) > 0 ):
-            print match_report(userTable, name1, n1_mergelist, verbose=False) # FIXME: verbose command line option
-            selection = raw_input("merg?  y/N  -> ")
-            if len(selection) < 1: continue
-            if selection.lower()[0] == 'y':
+            print match_report(name1, n1_mergelist, verbose=False) # FIXME: verbose command line option
+            #selection = raw_input("merge?  y/N  -> ")
+            ##selection = raw_input("POSSIBLE merge?  y/N  -> ") # DEBUG
+            #if len(selection) < 1: continue
+            #if selection.lower()[0] == 'y':
+            if confirm("merge?  y/N  -> "):
                 n1_mergelist.append(name1)
                 yield n1_mergelist
 
@@ -203,6 +216,7 @@ if __name__ == "__main__":
 
     userTable = UserTable(user_table_file, user_data_file)
     c_names = userTable._UserTable__commonNames            # XXX: Acknowledged to be dangerous
+    dirty_list = []
 
     if options.wiki:
         options.scan = False
@@ -222,19 +236,37 @@ if __name__ == "__main__":
         print " done."
 
     if options.scan:
+
+#       appends = []
+        for name in c_names:
+            shorter = name.rstrip('-_')
+            if shorter not in c_names:
+                print match_report(name, [shorter], verbose=False)
+                #selection = raw_input("merge?  y/N  -> ")
+                ##selection = raw_input("MAIN merge?  y/N  -> ") # DEBUG
+                #if len(selection) < 1: continue
+                #if selection.lower()[0] == 'y':
+                if confirm("merge?  y/N  -> "):
+#                    appends.append( (name, shorter))
+                    userTable[name].addNick(shorter)
+                    dirty_list.append( (userTable[name].id, 'irc', shorter) )
+        #print "DEBUG DEBUG DEBUG %s DEBUG DEBUG DEBUG" % str(dirty_list)
+
+##        for item in appends:
+##            # DEBUG
+##            print "Adding %s to the user table..." % item[0]
+##            userTable[item[0]] = item[1]
+
+#        for app in appends:
+#            name, shorter = app
+#            userTable[name].addNick(shorter)
+#            userTable[shorter] = UserStats(shorter, -1, userTable.getID()) # blech
+#            userTable.merge(name, shorter)
+#        c_names = userTable._UserTable__commonNames            # XXX: Acknowledged to be dangerous
+
         for names in ircSorted( possible_merges(c_names, userTable) ):
             primary = names[0]
             for secondary in names[1:]:
                 userTable.merge(primary, secondary)
 
-        for name in c_names:
-            shorter = name.rstrip('-_')
-            if shorter not in c_names:
-                print match_report(userTable, name, [shorter], verbose=False)
-                selection = raw_input("merg?  y/N  -> ")
-                if len(selection) < 1: continue
-                if selection.lower()[0] == 'y':
-                    userTable[name].addNick(shorter)
-
-
-    userTable.close()
+    userTable.close(dirty_list)
