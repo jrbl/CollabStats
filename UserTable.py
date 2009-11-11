@@ -137,6 +137,12 @@ class UserTable(object):
             except TypeError:
                 return max(a, b)
 
+        def strip_empty(alist):
+            if len(alist) > 1:
+                return [x for x in alist if x != '']
+            else: 
+                return alist
+
         try:
             features = list(set(self.__yaml_data[pid].keys() + self.__yaml_data[sid].keys()))
         except KeyError:
@@ -157,7 +163,7 @@ class UserTable(object):
                 self.__yaml_data[pid][feature] = feats
                 continue
             if isinstance(featp, list):
-                self.__yaml_data[pid][feature] = list(set(feats + featp))
+                self.__yaml_data[pid][feature] = strip_empty(list(set(feats + featp)))
                 continue
             self.__yaml_data[pid][feature] = biggest(feats, featp)
 

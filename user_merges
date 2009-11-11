@@ -58,8 +58,13 @@ def ircLower(s):
         return s.encode("utf8")
     return unicode(s, "utf8")
 
-def fuzzy_match(n1, n2):
-    """Checks whether n1 contains n2, or vice versa."""
+def fuzzy_match(n1, n2, delta = 3):
+    """Checks whether n1 contains n2, or vice versa.
+       
+    n1 and n2 must have lengths within delta of one another.
+    """
+    if abs(len(n1) - len(n2)) > delta:
+        return False
     # FIXME: use irc downcaser before comparison
     n1 = ircLower(n1)
     n2 = ircLower(n2)
@@ -180,6 +185,9 @@ if __name__ == "__main__":
     parser.add_option('-f', "--force-merge", action="store", nargs=2, 
                       dest="merge_nicks", metavar="nick1 nick2", 
                       help="Force merge of data for nick1 and nick2, regardless of scan results.  Use with care.")
+    parser.add_option('-d', "--size_delta", action="store", nargs=1, type="int", default=3,
+                      dest="size_delta", metavar="delta",
+                      help="Only suggest two items as matches if they come within delta of each other in length.")
     
     options, args = parser.parse_args()
     if len(sys.argv) == 1:
