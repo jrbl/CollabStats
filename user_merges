@@ -58,18 +58,17 @@ def ircLower(s):
         return s.encode("utf8")
     return unicode(s, "utf8")
 
-def fuzzy_match(n1, n2, delta = 3):
-    """Checks whether n1 contains n2, or vice versa.
-       
-    n1 and n2 must have lengths within delta of one another.
-    """
+def fuzzy_match(n1, n2):
+    """Checks whether n1 contains n2, or vice versa."""
     ##if abs(len(n1) - len(n2)) > delta:
     ##    return False
     # FIXME: use irc downcaser before comparison
     n1 = ircLower(n1)
     n2 = ircLower(n2)
     try:
-        if (n1.find(n2) != -1) or (n2.find(n1) != -1):
+        #if (n1.find(n2) != -1) or (n2.find(n1) != -1):
+        #    return True
+        if n1.startswith(n2) or n2.startswith(n1):
             return True
     except UnicodeDecodeError, msg:
         print n1
@@ -124,11 +123,12 @@ def possible_wikiMerge(cnames, userTable):
             wnames[name] = id
 
     for inner_list in [cnames, wnames]:
-        seen_ids.clear()
+        #seen_ids.clear()
         for name in wnames:
             if wnames[name] in seen_ids: continue
             seen_ids.add(wnames[name]) 
             for nick in inner_list:
+                if inner_list[nick] in seen_ids: continue
                 if nick == '': continue
                 if inner_list[nick] == wnames[name]: continue
                 if fuzzy_match(name, nick):
