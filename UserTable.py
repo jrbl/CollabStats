@@ -96,13 +96,13 @@ class UserTable(object):
             return self.__userObjectTable[ self.__commonNames[ key ] ]
         # Not found.  Perhaps the key is case-sensitive.
         # Try title-casing.  XXX
-        key = key.title()
-        if key in self.__userObjectTable:
-            return self.__userObjectTable[key]
-        elif key in self.__commonNames:
-            return self.__userObjectTable[ self.__commonNames[ key ] ]
-        else:
-            raise KeyError, "No such UUID or nick: '" + str(key) + "'"
+        if isinstance(key, str):
+            key = key.title()
+            if key in self.__userObjectTable:
+                return self.__userObjectTable[key]
+            elif key in self.__commonNames:
+                return self.__userObjectTable[ self.__commonNames[ key ] ]
+        raise KeyError, "No such UUID or nick: '" + str(key) + "'"
 
     def __setitem__(self, nick, user_object):
         """Maps a nickname to a particular user object"""
@@ -220,7 +220,10 @@ class UserTable(object):
 
     def idToName(self, id):
         """If id is in our database, give a real name if we have one, or else nicks[0]"""
-        retVal   = self.__userObjectTable[id].nicks[0]
+        if id in self.__userObjectTable:
+            retVal   = self.__userObjectTable[id].nicks[0]
+        else:
+            retVal = ''
         if id in self.__yaml_data:
             record   = self.__yaml_data[id]
             realname = record['real name']

@@ -54,15 +54,22 @@ def ircLower(s):
     s.replace(']', '}')
     s.replace('\\', '|')
     s.replace('~', '^')
-    return s
+    if isinstance(s, unicode):
+        return s.encode("utf8")
+    return unicode(s, "utf8")
 
-def fuzzy_match(n1, n2, epsilon = 3):
+def fuzzy_match(n1, n2):
     """Checks whether n1 contains n2, or vice versa."""
     # FIXME: use irc downcaser before comparison
     n1 = ircLower(n1)
     n2 = ircLower(n2)
-    if (n1.find(n2) != -1) or (n2.find(n1) != -1):
-        return True
+    try:
+        if (n1.find(n2) != -1) or (n2.find(n1) != -1):
+            return True
+    except UnicodeDecodeError, msg:
+        print n1
+        print n2
+        raise
     return False
 
 def ircSorted(nick_list):
@@ -102,39 +109,30 @@ def confirm(text, aff='y'):
 def possible_wikiMerge(cnames, userTable):
     yaml = userTable._UserTable__yaml_data         # XXX: Acknowledged to be dangerous
 
-    seen_ids = {}
     wnames = {}
     suggestions = set()
-    merges_todo = []
+    seen_ids = set()
 
     for id in yaml:
         for name in yaml[id]['wiki']:
             if name == '': continue
             wnames[name] = id
 
-    for name in wnames:
-        if wnames[name] in seen_ids: continue
-        seen_ids[wnames[name]] = None
-        for nick in cnames:
-            if nick == '': continue
-            if cnames[nick] == wnames[name]: continue
-            if fuzzy_match(name, nick):
-                suggestions.add(tuple(sorted((wnames[name], cnames[nick]))))
+    for inner_list in [cnames, wnames]:
+        seen_ids.clear()
+        for name in wnames:
+            if wnames[name] in seen_ids: continue
+            seen_ids.add(wnames[name]) 
+            for nick in inner_list:
+                if nick == '': continue
+                if inner_list[nick] == wnames[name]: continue
+                if fuzzy_match(name, nick):
+                    suggestions.add(tuple(sorted((wnames[name], inner_list[nick]))))
 
-    seen_ids = {}
-    for name in wnames:
-        if wnames[name] in seen_ids: continue
-        seen_ids[wnames[name]] = None
-        for name2 in wnames:
-            if name2 == '': continue
-            if wnames[name2] == wnames[name]: continue
-            if fuzzy_match(name, name2):
-                suggestions.add(tuple(sorted((wnames[name], wnames[name2]))))
-
-    for suggestion in suggestions:
-        print id_match_report(userTable, suggestion[0], suggestion[1])
-        if confirm("merge?  y/N  -> "):
-            yield suggestion
+        for suggestion in suggestions:
+            print id_match_report(userTable, suggestion[0], suggestion[1])
+            if confirm("merge?  y/N  -> "):
+                yield suggestion
 
 def possible_merges(c_names, userTable):
     """Does all-against-all fuzzy matching and returns an iterator over similar items.
