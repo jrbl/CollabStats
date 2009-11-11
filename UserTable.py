@@ -161,17 +161,6 @@ class UserTable(object):
                 continue
             self.__yaml_data[pid][feature] = biggest(feats, featp)
 
-        ## yaml differences
-        #for feature in self.__yaml_data[pid].keys():
-        #    if isinstance(self.__yaml_data[pid][feature], list):
-        #        fnames = set(self.__yaml_data[pid][feature])
-        #        for item in self.__yaml_data[sid][feature]:
-        #            fnames.add(item)
-        #        self.__yaml_data[pid][feature] = list(fnames)
-        #    else:
-        #        self.__yaml_data[pid][feature] = biggest(self.__yaml_data[pid][feature], 
-        #                                                 self.__yaml_data[sid][feature])
-
         # pickle differences
         candidate = set(filter(None, pobj.nicks))
         for c in filter(None, sobj.nicks):
@@ -207,11 +196,7 @@ class UserTable(object):
     def clean(self, dirty_list):
         """Go through dirty_list updating list field types in self.__yaml_data"""
         for data_key, yaml_key, addition in dirty_list:
-            #print "self.__yaml_data[%s][%s].append(%s) = %s" % (data_key, yaml_key, addition, 
-            #                                                   self.__yaml_data[data_key][yaml_key])
             self.__yaml_data[data_key][yaml_key].append(addition)
-            #print "self.__yaml_data[%s][%s].append(%s) = %s" % (data_key, yaml_key, addition, 
-            #                                                   self.__yaml_data[data_key][yaml_key])
 
     def close(self, dirty_list = None):
         """Write out our data files"""
