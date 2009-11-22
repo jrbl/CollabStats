@@ -122,7 +122,8 @@ def possible_wikiMerge(cnames, userTable):
             if name == '': continue
             wnames[name] = id
 
-    for inner_list in [cnames, wnames]:
+    #for inner_list in [cnames, wnames]:
+    for inner_list in [cnames]:
         #seen_ids.clear()
         for name in wnames:
             if wnames[name] in seen_ids: continue
