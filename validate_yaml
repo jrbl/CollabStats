@@ -22,6 +22,7 @@
 import os, sys
 
 from DictDB import DictDB
+from EasyIO import ewriteln
 
 
 EXPECTED_FORMAT_EN = """
@@ -92,17 +93,37 @@ if __name__ == "__main__":
             assert isinstance(key, int)
             record = data[key]
 
-            name = record['real name']
+            try:
+                name = record['real name']
+            except KeyError, msg:
+                # missing keys should be an error, but we can fix it.
+                ewriteln("Warning: no real name field for key %s; correcting..." % key)
+                name = ''
             validateText(name)
 
-            email = record['email']
+            try:
+                email = record['email']
+            except KeyError, msg:
+                # missing keys should be an error, but we can fix it.
+                ewriteln("Warning: no email field for key %s; correcting..." % key)
+                email = []
             email = validateListOfText(email)
 
-            irc = record['irc']
+            try:
+                irc = record['irc']
+            except KeyError, msg:
+                # missing keys should be an error, but we can fix it.
+                ewriteln("Warning: no irc nicks field for key %s; correcting..." % key)
+                irc = []
             irc = validateListOfText(irc)
             data[key]['irc'] = irc
 
-            wiki = record['wiki']
+            try:
+                wiki = record['wiki']
+            except KeyError, msg:
+                # missing keys should be an error, but we can fix it.
+                ewriteln("Warning: no wiki data field for key %s; correcting..." % key)
+                wiki = []
             wiki = validateListOfText(wiki)
             data[key]['wiki'] = wiki
             ## XXX: Testing unicode re-writing here; it doesn't seem to behave correctly

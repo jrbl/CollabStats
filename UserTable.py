@@ -39,7 +39,7 @@ import os
 
 from DictDB import DictDB
 from UserStats import UserStats
-
+from EasyIO import ewrite
 
 class UserTable(object):
     """Maps common names to UUIDs and UUIDs to user objects"""
@@ -68,8 +68,15 @@ class UserTable(object):
                 if nick == '': continue
                 self.__commonNames[nick] = id
         for id in self.__yaml_data.keys():
-            real_name = self.__yaml_data[id]['real name']
-            nicks = self.__yaml_data[id]['irc']
+            try:
+                real_name = self.__yaml_data[id]['real name']
+            except KeyError, msg:
+                ewrite("Error: Real name missing from yaml data file %s at key %s\n" % (mapping_yaml, id))
+                raise 
+            try:
+                nicks = self.__yaml_data[id]['irc']
+            except KeyError, msg:
+                ewrite("Error: IRC nicks missing from yaml data file %s at key %s\n" % (mapping_yaml, id))
             if real_name != '':
                 self.__commonNames[real_name] = id
             if id not in self.__userObjectTable:
