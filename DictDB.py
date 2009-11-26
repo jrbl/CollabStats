@@ -92,7 +92,7 @@ class DictDB(dict):
             os.remove(tempname)
             raise
         file.close()
-        shutil.move(tempname, self.filename)    # atomic commit
+        shutil.move(tempname, filename)    # atomic commit
         if self.mode is not None:
             os.chmod(self.filename, self.mode)
         self._verbose("...done.\n")

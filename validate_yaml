@@ -100,21 +100,23 @@ if __name__ == "__main__":
                 ewriteln("Warning: no real name field for key %s; correcting..." % key)
                 name = ''
             validateText(name)
+            data[key]['real name'] = name
 
             try:
                 email = record['email']
             except KeyError, msg:
                 # missing keys should be an error, but we can fix it.
                 ewriteln("Warning: no email field for key %s; correcting..." % key)
-                email = []
+                email = ['']
             email = validateListOfText(email)
+            data[key]['email'] = email
 
             try:
                 irc = record['irc']
             except KeyError, msg:
                 # missing keys should be an error, but we can fix it.
                 ewriteln("Warning: no irc nicks field for key %s; correcting..." % key)
-                irc = []
+                irc = ['']
             irc = validateListOfText(irc)
             data[key]['irc'] = irc
 
@@ -123,16 +125,9 @@ if __name__ == "__main__":
             except KeyError, msg:
                 # missing keys should be an error, but we can fix it.
                 ewriteln("Warning: no wiki data field for key %s; correcting..." % key)
-                wiki = []
+                wiki = ['']
             wiki = validateListOfText(wiki)
             data[key]['wiki'] = wiki
-            ## XXX: Testing unicode re-writing here; it doesn't seem to behave correctly
-            #assert isinstance(data[key]['wiki'], list)
-            #if len(data[key]['wiki']) > 1:
-            #    data[key]['wiki'] = filter(None, list(set(data[key]['wiki'])))
-            #for i in range(len(data[key]['wiki'])):
-            #    if isinstance(data[key]['wiki'][i], unicode):
-            #        data[key]['wiki'][i] = data[key]['wiki'][i].encode("utf-8")
 
         # If we haven't thrown an exception by now, we're fine.
         sys.stdout.write("Everything checks out OK.\n")
