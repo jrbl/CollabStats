@@ -109,6 +109,13 @@ class UserTable(object):
                 return self.__userObjectTable[key]
             elif key in self.__commonNames:
                 return self.__userObjectTable[ self.__commonNames[ key ] ]
+        # Not found.  Perhaps the key is case-sensitive.
+        # Try down-casing.  XXX
+            key = key.lower()
+            if key in self.__userObjectTable:
+                return self.__userObjectTable[key]
+            elif key in self.__commonNames:
+                return self.__userObjectTable[ self.__commonNames[ key ] ]
         raise KeyError, "No such UUID or nick: '" + str(key) + "'"
 
     def __setitem__(self, nick, user_object):
