@@ -53,12 +53,12 @@ class UserTable(object):
         self.verbose = verbose
 
         self.__userObjectTable = DictDB(user_objects_db, flag='c', format='pickle', verbose=self.verbose)
-        self.__yaml_data = DictDB(mapping_yaml, format='yaml', verbose=self.verbose)
+        self.__yaml_data = DictDB(mapping_yaml, flag='c', format='yaml', verbose=self.verbose)
 
         # Set last_id higher than anything we've seen (necessary with sequential uids, not uuids)
         # XXX: oh my gods, this is crazy.  But at least it's user-editable, I guess?
         user_keys = sorted( self.__userObjectTable.keys() ) or [ 1 ]
-        yaml_keys = sorted( self.__yaml_data.keys()       )       or [ 1 ]
+        yaml_keys = sorted( self.__yaml_data.keys()       ) or [ 1 ]
         self.last_id = max(user_keys[ len(user_keys)-1 ], 
                            yaml_keys[ len(yaml_keys)-1 ])
 
@@ -196,6 +196,14 @@ class UserTable(object):
         # update common names
         for name in pobj.nicks:
             self.__commonNames[name] = pid
+
+        # XXX: make sure real names correctly dereference
+        real_name = self.__yaml_data[pid]['real name']
+        if real_name in self.__commonNames:
+            self.__commonNames[real_name] = pid
+
+        # XXX: make sure the pickle information is good
+        self.__userObjectTable[pid] = pobj
 
         # delete secondary
         try:

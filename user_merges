@@ -240,7 +240,8 @@ if __name__ == "__main__":
                     userTable[name].addNick(shorter)
                     dirty_list.append( (userTable[name].id, 'irc', shorter) )
 
-        for names in ircSorted( possible_merges(c_names, userTable) ):
+        #for names in ircSorted( possible_merges(c_names, userTable) ):
+        for names in possible_merges(c_names, userTable):
             primary = names[0]
             for secondary in names[1:]:
                 userTable.merge(primary, secondary)

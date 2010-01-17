@@ -42,6 +42,8 @@ from datetime import datetime
 try:
     import yaml
 except ImportError:
+    sys.stderr.write("Warning: yaml library not found.\n")
+    sys.stderr.flush()
     yaml = None
 
 class DictDB(dict):
@@ -56,6 +58,7 @@ class DictDB(dict):
         if (yaml == None) and (format == 'yaml'):
             sys.stderr.write("YAML requested but no YAML library installed, falling back to JSON.\n");
             sys.stderr.flush()
+            self.format == 'json'
 
         if flag != 'n' and os.access(filename, os.R_OK):
             file = open(filename, 'rb')
@@ -114,7 +117,7 @@ class DictDB(dict):
 
     def load(self, file):
         # try formats from most restrictive to least restrictive
-        for loader in (pickle.load, json.load, yaml.load, csv.reader):
+        for loader in (pickle.load, json.load, csv.reader, yaml.load):
             file.seek(0)
             try:
                 return self.update(loader(file))
